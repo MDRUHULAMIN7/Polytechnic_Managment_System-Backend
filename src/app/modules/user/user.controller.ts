@@ -1,8 +1,8 @@
-import { type Request, type Response } from 'express';
+import { type NextFunction, type Request, type Response } from 'express';
 import { userServices } from './user.service.js';
 // import studentZodValidationSchema from "../student/student.validation.js";
 
-const createStudent = async (req: Request, res: Response) => {
+const createStudent = async (req: Request, res: Response,next:NextFunction) => {
   try {
     //get user req and data
     const {password , student} = req.body;
@@ -23,12 +23,8 @@ const createStudent = async (req: Request, res: Response) => {
       data: result,
     });
    
-  } catch (error:any) {
-    res.status(500).json({
-      success: false,
-      message:error.message ||'student is not created successfully !',
-      data: error,
-    });
+  } catch (error) {
+   next(error)
   }
 };
 
