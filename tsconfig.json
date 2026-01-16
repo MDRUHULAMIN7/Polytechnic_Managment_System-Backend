@@ -1,0 +1,15 @@
+{
+    "include": ["src"], // which files to compile
+  "exclude": ["node_modules", "dist"], // which files to skip
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "src",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  }
+}
