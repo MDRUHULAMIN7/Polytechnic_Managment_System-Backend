@@ -1,5 +1,7 @@
 import { type NextFunction, type Request, type Response } from 'express';
 import { userServices } from './user.service.js';
+import sendResponse from '../../utils/sendResponse.js';
+import { StatusCodes } from 'http-status-codes';
 // import studentZodValidationSchema from "../student/student.validation.js";
 
 const createStudent = async (req: Request, res: Response,next:NextFunction) => {
@@ -17,11 +19,18 @@ const createStudent = async (req: Request, res: Response,next:NextFunction) => {
       //will call service  fun to send this data
     const result = await userServices.createStudentIntoDB(password,student);
     // send res
-    res.status(200).json({
-      success: true,
-      message: 'student is created successfully !',
-      data: result,
-    });
+    // res.status(200).json({
+    //   success: true,
+    //   message: 'student is created successfully !',
+    //   data: result,
+    // });
+    
+    sendResponse(res,{
+      statusCode:StatusCodes.OK,
+       success: true,
+       message: 'student is created successfully !',
+       data:result
+    })
    
   } catch (error) {
    next(error)
