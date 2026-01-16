@@ -5,7 +5,7 @@ import { userServices } from './user.service.js';
 const createStudent = async (req: Request, res: Response) => {
   try {
     //get user req and data
-    const {password , student} = req.body.student;
+    const {password , student} = req.body;
    
     // data validation using joi
     // const { error ,value} = studentJoiValidationSchema.validate(student);
