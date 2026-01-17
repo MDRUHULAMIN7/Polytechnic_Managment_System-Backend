@@ -1,10 +1,10 @@
-import { type NextFunction, type Request, type Response } from 'express';
+import { type RequestHandler} from 'express';
 import { userServices } from './user.service.js';
 import sendResponse from '../../utils/sendResponse.js';
 import { StatusCodes } from 'http-status-codes';
 // import studentZodValidationSchema from "../student/student.validation.js";
 
-const createStudent = async (req: Request, res: Response,next:NextFunction) => {
+const createStudent : RequestHandler= async (req, res,next) => {
   try {
     //get user req and data
     const {password , student} = req.body;
