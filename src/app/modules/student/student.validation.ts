@@ -70,7 +70,7 @@ const createStudentZodValidationSchema =z.object({
 
   gender: z.enum(['male', 'female', 'others']),
 
-  dateOfBirth: z.date().optional(),
+  dateOfBirth: z.string().optional(),
 
   email: z.string().email('Email is not valid'),
 
@@ -91,6 +91,7 @@ const createStudentZodValidationSchema =z.object({
   localGuardian: localGuardianZodValidationSchema,
 
   profileImg: z.string().optional(),
+  admissionSemester: z.string(),
   })
 })
 });
