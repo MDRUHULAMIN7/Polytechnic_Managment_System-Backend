@@ -62,9 +62,10 @@ const localGuardianZodValidationSchema = z.object({
   address: z.string().min(1, 'Local Guardian Address is Required'),
 });
 
-const studentZodValidationSchema = z.object({
-  id: z.string().min(1, 'Student ID is Required'),
-
+const createStudentZodValidationSchema =z.object({
+  body: z.object({
+  student:z.object({
+    
   name: userNameZodValidationSchema,
 
   gender: z.enum(['male', 'female', 'others']),
@@ -90,8 +91,10 @@ const studentZodValidationSchema = z.object({
   localGuardian: localGuardianZodValidationSchema,
 
   profileImg: z.string().optional(),
-
-  isActive: z.enum(['active', 'blocked']),
+  })
+})
 });
 
-export default studentZodValidationSchema;
+export const  studentValidations={
+  createStudentZodValidationSchema ,
+};
