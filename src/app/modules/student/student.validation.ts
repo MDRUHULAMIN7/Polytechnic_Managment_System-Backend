@@ -70,7 +70,7 @@ const createStudentZodValidationSchema =z.object({
 
   gender: z.enum(['male', 'female', 'others']),
 
-  dateOfBirth: z.string().optional(),
+  dateOfBirth: z.date().optional(),
 
   email: z.string().email('Email is not valid'),
 
