@@ -3,7 +3,6 @@
 import type { TAcademicSemester } from "../academicSemester/academicSemester.interface.js";
 import { User } from "./user.model.js";
 
-
 const findLastStudentId = async () => {
   const lastStudent = await User.findOne(
     {
@@ -19,14 +18,29 @@ const findLastStudentId = async () => {
     })
     .lean();
 
-  //203001   0001
-  return lastStudent?.id ? lastStudent.id.substring(6) : undefined;
+  //2030 01 0001
+  return lastStudent?.id ? lastStudent.id : undefined;
 };
 
 export const generateStudentId = async (payload: TAcademicSemester) => {
   // first time 0000
   //0001  => 1
-  const currentId = (await findLastStudentId()) || (0).toString();
+  let currentId = (0).toString(); // 0000 by deafult
+
+  const lastStudentId = await findLastStudentId();
+  // 2030 01 0001
+  const lastStudentSemesterCode = lastStudentId?.substring(4, 6); //01 last semester code ;
+  const lastStudentYear = lastStudentId?.substring(0, 4); // 2030 last year
+  const currentSemesterCode = payload.code;
+  const currentYear = payload.year;
+
+  if (
+    lastStudentId &&
+    lastStudentSemesterCode === currentSemesterCode &&
+    lastStudentYear === currentYear
+  ) {
+    currentId = lastStudentId.substring(6); // 00001
+  }
 
   let incrementId = (Number(currentId) + 1).toString().padStart(4, '0');
 
