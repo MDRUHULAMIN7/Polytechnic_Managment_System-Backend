@@ -1,6 +1,18 @@
-import z from 'zod';
+import { z } from 'zod';
 
-const academicInstructorValidationSchema = z.object({
-  name: z.string(),
+const createAcademicInstructorValidationSchema = z.object({
+  body: z.object({
+    name: z.string(),
+  }),
 });
-export default academicInstructorValidationSchema;
+
+const updateAcademicInstructorValidationSchema = z.object({
+  body: z.object({
+    name: z.string(),
+  }),
+});
+
+export const AcademicInstructorValidation = {
+  createAcademicInstructorValidationSchema,
+  updateAcademicInstructorValidationSchema,
+};
