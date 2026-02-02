@@ -7,8 +7,19 @@ import { StatusCodes } from 'http-status-codes';
 import { User } from '../user/user.model.js';
 
 
-const getAllStudentFromDB = async()=>{
-    const result = await Student.find().populate({
+const getAllStudentFromDB = async(query:Record<string,unknown>)=>{
+  
+   
+  let searchTerm = '';
+  if(query?.searchTerm){
+    searchTerm = query?.searchTerm as string;
+  }
+
+  const result = await Student.find({
+    $or:['email','name.firstName','presentAddress'].map((feild)=>({
+      [feild]:{$regex:searchTerm,$options:'i'}
+    }))
+  }).populate({
         path:'academicDepartment',
         populate:{
            path:'academicInstructor',  
@@ -65,7 +76,6 @@ const updateStudentIntoDB = async (id: string, payload: Partial<TStudent>) => {
       modifiedUpdatedData[`localGuardian.${key}`] = value;
     }
   }
-           console.log(modifiedUpdatedData)
   const result = await Student.findOneAndUpdate({ id }, modifiedUpdatedData, {
     new: true,
     runValidators: true,
