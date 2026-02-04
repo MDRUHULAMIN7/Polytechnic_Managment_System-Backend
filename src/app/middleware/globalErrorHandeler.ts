@@ -69,7 +69,6 @@ const globalErrorHandeler: ErrorRequestHandler = (
     message,
     errorSources,
     stack: config.NODE_ENV === 'development' ? err?.stack : null,
-    err
   });
 };
 

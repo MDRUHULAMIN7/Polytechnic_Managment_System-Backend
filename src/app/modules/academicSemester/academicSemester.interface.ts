@@ -11,18 +11,28 @@ export type TMonths =
   | 'October'
   | 'November'
   | 'December';
+  
+// Polytechnic er semester name (01 to 08)
+export type TAcademicSemesterName = 
+  | 'First' 
+  | 'Second' 
+  | 'Third' 
+  | 'Fourth' 
+  | 'Fifth' 
+  | 'Sixth' 
+  | 'Seventh' 
+  | 'Eighth';
 
-export type TAcademicSemesterName = "Spring"|"Autumn" ;
-
-export type TAcademicSemesterCode = '01'|'02' ;
+// Polytechnic er semester code (01 to 08)
+export type TAcademicSemesterCode = '01' | '02' | '03' | '04' | '05' | '06' | '07' | '08';
 
 export type TAcademicSemester = {
-    name : TAcademicSemesterName,
-    code:TAcademicSemesterCode,
-    year:string,
-    startMonth:TMonths,
-    endMonth:TMonths,
-}
-  export type TAcademicSemesterNameCodeMapper = {
-        [key:string]:string;
-    };
+  name: TAcademicSemesterName;
+  code: TAcademicSemesterCode;
+  year: string;
+  startMonth: TMonths;
+  endMonth: TMonths;
+};
+export type TAcademicSemesterNameCodeMapper = {
+  [key: string]: string;
+};

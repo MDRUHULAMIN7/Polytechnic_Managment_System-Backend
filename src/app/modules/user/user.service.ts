@@ -32,11 +32,13 @@ const createStudentIntoDB = async (passsword:string,payload: TStudent) => {
 
   //find academic semester info 
   const  admissionSemester = await AcademicSemester.findById(payload.admissionSemester)
+  //find academic semester info 
+  const  academicDepartment = await AcademicDepartment.findById(payload.academicDepartment)
        // Handle null case
-  if (!admissionSemester) {
+  if (!admissionSemester || !academicDepartment) {
      throw new AppError(
       StatusCodes.NOT_FOUND,
-      'Academic semester not found!',
+      'Academic semester or Academic Department  not found!',
     );
   }
 
@@ -72,14 +74,13 @@ const createStudentIntoDB = async (passsword:string,payload: TStudent) => {
    await session.endSession();
     return newStudent  ;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  }catch(error){
+  }catch(error:any){
    await session.abortTransaction();
-  await session.endSession();
+   await session.endSession();
+  throw new Error(error);
   }
 
 
-   
  
 };
 const createInstructorIntoDB = async (password: string, payload: TInstructor) => {

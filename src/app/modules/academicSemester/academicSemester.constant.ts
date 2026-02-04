@@ -1,4 +1,4 @@
-import type { TAcademicSemesterCode, TAcademicSemesterName, TAcademicSemesterNameCodeMapper, TMonths } from "./academicSemester.interface.js";
+import type { TAcademicSemesterCode, TAcademicSemesterName, TAcademicSemesterNameCodeMapper,  TMonths } from "./academicSemester.interface.js";
 
 export const Months: TMonths[] = [
   'January',
@@ -15,11 +15,34 @@ export const Months: TMonths[] = [
   'December',
 ];
 
-export const AcademicSemesterNames:TAcademicSemesterName[]=["Spring","Autumn"];
+// Polytechnic semester names
+export const AcademicSemesterNames: TAcademicSemesterName[] = [
+  'First', 
+  'Second', 
+  'Third', 
+  'Fourth', 
+  'Fifth', 
+  'Sixth', 
+  'Seventh', 
+  'Eighth'
+];
 
-export const AcademicSemesterCodes:TAcademicSemesterCode[]=['01','02'];
+// Polytechnic semester codes
+export const AcademicSemesterCodes: TAcademicSemesterCode[] = [
+  '01', '02', '03', '04', '05', '06', '07', '08'
+];
 
-    export const academicSemesterNameCodeMapper:TAcademicSemesterNameCodeMapper ={
-        Spring:"01",
-        Autumn:"02"
-    }
+
+
+// Name-Code mapping for Polytechnic
+export const academicSemesterNameCodeMapper: TAcademicSemesterNameCodeMapper = {
+  'First': '01',
+  'Second': '02',
+  'Third': '03',
+  'Fourth': '04',
+  'Fifth': '05',
+  'Sixth': '06',
+  'Seventh': '07',
+  'Eighth': '08'
+};
+
