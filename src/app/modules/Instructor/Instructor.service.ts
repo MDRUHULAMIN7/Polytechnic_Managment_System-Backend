@@ -24,7 +24,7 @@ const getAllInstructorsFromDB = async (query: Record<string, unknown>) => {
 };
 
 const getSingleInstructorFromDB = async (id: string) => {
-  const result = await Instructor.findOne({id}).populate('academicDepartment').populate('user');
+  const result = await Instructor.findById(id).populate('academicDepartment').populate('user');
 
   return result;
 };
