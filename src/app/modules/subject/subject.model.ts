@@ -1,5 +1,5 @@
 import { Schema, model, Types } from 'mongoose';
-import type{ TSubject } from './subject.interface.js';
+import{type TSubjectInstructor, type TSubject } from './subject.interface.js';
 
 const PreRequisiteSubjectSchema = new Schema(
   {
@@ -24,11 +24,11 @@ const SubjectSchema = new Schema({
 export const Subject = model<TSubject>('Subject', SubjectSchema);
 
 const SubjectInstructorSchema = new Schema({
-  subject: { type: Types.ObjectId, ref: 'Subject', required: true },
+  subject: { type: Types.ObjectId, ref: 'Subject', required: true ,unique:true},
   instructors: { type: [Types.ObjectId], ref: 'Instructor', default: [] },
 });
 
-export const SubjectInstructor = model(
+export const SubjectInstructor = model<TSubjectInstructor>(
   'SubjectInstructor',
   SubjectInstructorSchema,
 );
