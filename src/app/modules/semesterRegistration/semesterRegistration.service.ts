@@ -72,13 +72,6 @@ const updateSemesterRegistrationIntoDB = async (
   id: string,
   payload: Partial<TSemesterRegistration>,
 ) => {
-  /**
-   * Step1: Check if the requested registered semester exists
-   * Step2: If the requested semester registration is 'ENDED', we will not update anything
-   * Step3: If the requested semester registration is 'UPCOMING', we will let update everything.
-   * Step4: If the requested semester registration is 'ONGOING', we will only allow updating status to 'ENDED'
-   * Step5: Validate status transition: UPCOMING --> ONGOING --> ENDED
-   */
 
   // Step 1: Check if the requested registered semester exists
   const existingSemesterRegistration = await SemesterRegistration.findById(id);
@@ -139,7 +132,7 @@ const updateSemesterRegistrationIntoDB = async (
       if (hasOtherFields) {
         throw new AppError(
           StatusCodes.BAD_REQUEST,
-          `When semester is ${currentSemesterStatus}, you can only update status to ENDED without any other fields`
+          `When semester is ${currentSemesterStatus}, you can only update status to ENDED without any other data`
         );
       }
     } else {
