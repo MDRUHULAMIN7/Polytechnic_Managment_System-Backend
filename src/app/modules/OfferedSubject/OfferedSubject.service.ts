@@ -148,6 +148,7 @@ const getSingleOfferedSubjectFromDB = async (id: string) => {
   .populate('semesterRegistration')
   .populate('academicSemester')
   .populate('academicInstructor')
+  .populate('academicDepartment')
   .populate('subject')
   .populate('instructor');
 

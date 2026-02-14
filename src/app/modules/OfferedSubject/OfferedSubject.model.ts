@@ -40,6 +40,7 @@ const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
     },
     section: {
       type: Number,
+      unique:true,
       required: true,
     },
     days: [
