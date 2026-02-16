@@ -4,8 +4,8 @@ import { User } from '../user/user.model.js';
 import AppError from '../../errors/AppError.js';
 import { StatusCodes } from 'http-status-codes';
 import config from '../../config/index.js';
-import { createToken } from './auth.utils.js';
-import jwt, { type JwtPayload, type SignOptions } from 'jsonwebtoken';
+import { createToken, verifyToken } from './auth.utils.js';
+import { type JwtPayload, type SignOptions } from 'jsonwebtoken';
 import { sendEmail } from '../../utils/sendEmail.js';
 
 const loginUser = async (payload: TLoginUser) => {
@@ -116,10 +116,7 @@ const changePassword = async (
 
 const refreshToken = async (token: string) => {
   // checking if the given token is valid
-  const decoded = jwt.verify(
-    token,
-    config.jwt_refresh_secret as string,
-  ) as JwtPayload;
+  const decoded = verifyToken(token, config.jwt_refresh_secret as string);
 
   const { userId, iat } = decoded;
 
@@ -228,10 +225,7 @@ const resetPassword = async (
     throw new AppError(StatusCodes.FORBIDDEN, 'This user is blocked ! !');
   }
 
-  const decoded = jwt.verify(
-    token,
-    config.jwt_access_secret as string,
-  ) as JwtPayload;
+  const decoded = verifyToken(token, config.jwt_refresh_secret as string);
 
   if (payload.id !== decoded.userId) {
     throw new AppError(StatusCodes.FORBIDDEN, 'You are forbidden!');

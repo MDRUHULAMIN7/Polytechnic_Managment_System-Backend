@@ -8,6 +8,7 @@ import { instructorValidations } from '../Instructor/Instructor.validation.js';
 import { AdminValidations } from '../admin/admin.validation.js';
 import auth from '../../middleware/auth.js';
 import { USER_ROLE } from './user.constant.js';
+import { UserValidation } from './user.validation.js';
 const router = express.Router();
 
 
@@ -18,6 +19,12 @@ router.post('/create-student',auth(USER_ROLE.admin),validateRequest(studentValid
 router.post('/create-instructor',auth(USER_ROLE.admin),validateRequest(instructorValidations.createInstructorValidationSchema) ,userControllers.createInstructor);
 
 router.post('/create-admin',validateRequest(AdminValidations.createAdminValidationSchema) ,userControllers.createAdmin);
+router.post(
+  '/change-status/:id',
+  auth('admin'),
+  validateRequest(UserValidation.changeStatusValidationSchema),
+  userControllers.changeStatus,
+);
 
 router.get('/me',auth('admin','instructor','student') ,userControllers.getMe);
 
