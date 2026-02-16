@@ -24,5 +24,18 @@ router.post(
   validateRequest(AuthValidation.refreshTokenValidationSchema),
   AuthControllers.refreshToken,
 );
+router.post(
+  '/forget-password',
+  validateRequest(AuthValidation.forgetPasswordValidationSchema),
+  AuthControllers.forgetPassword,
+);
+
+router.post(
+  '/reset-password',
+  validateRequest(AuthValidation.forgetPasswordValidationSchema),
+  AuthControllers.resetPassword,
+);
 
 export const AuthRoutes = router;
+
+// http://localhost:3000/?id=A-0001&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJBLTAwMDEiLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NzEyMzM3MzgsImV4cCI6MTc3MTIzNDMzOH0.IZC_QBMKoHVg0ewIT5S6KEzQMR9b9xwwfgskR9nn0Ds

@@ -3,6 +3,7 @@ import config from "../../config/index.js";
 import catchAsync from "../../utils/CatchAsync.js";
 import sendResponse from "../../utils/sendResponse.js";
 import { AuthServices } from "./auth.service.js";
+import AppError from "../../errors/AppError.js";
 
 
 const loginUser = catchAsync(async (req, res) => {
@@ -61,6 +62,9 @@ const forgetPassword = catchAsync(async (req, res) => {
 
 const resetPassword = catchAsync(async (req, res) => {
   const token = req.headers.authorization;
+  if (!token) {
+    throw new AppError(StatusCodes.UNAUTHORIZED, 'Authorization token is required!');
+  }
 
   const result = await AuthServices.resetPassword(req.body, token);
   sendResponse(res, {

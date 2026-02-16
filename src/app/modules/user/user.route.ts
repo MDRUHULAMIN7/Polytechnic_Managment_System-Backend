@@ -19,4 +19,6 @@ router.post('/create-instructor',auth(USER_ROLE.admin),validateRequest(instructo
 
 router.post('/create-admin',validateRequest(AdminValidations.createAdminValidationSchema) ,userControllers.createAdmin);
 
+router.get('/me',auth('admin','instructor','student') ,userControllers.getMe);
+
 export const UserRoutes = router;
