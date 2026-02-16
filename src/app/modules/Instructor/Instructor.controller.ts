@@ -18,7 +18,7 @@ const getSingleInstructor = catchAsync(async (req, res) => {
 
 const getAllInstructors = catchAsync(async (req, res) => {
   const result = await InstructorServices.getAllInstructorsFromDB(req.query);
-
+   
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
