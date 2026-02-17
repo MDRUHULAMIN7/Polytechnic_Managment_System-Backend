@@ -64,7 +64,7 @@ const localGuardianZodValidationSchema = z.object({
 
 const createStudentZodValidationSchema =z.object({
   body: z.object({
-  student:z.object({
+  studentData:z.object({
     
   name: userNameZodValidationSchema,
 
