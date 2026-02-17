@@ -13,8 +13,13 @@ import type { TInstructor } from "../Instructor/Instructor.interface.js";
 import { AcademicDepartment } from "../academicDepartment/academicDepartment.model.js";
 import { Admin } from "../admin/admin.model.js";
 import type { TAdmin } from "../admin/admin.interface.js";
+import { sendImageToCloudinary } from "../../utils/sendImageToCloudinary.js";
 
-const createStudentIntoDB = async (passsword:string,payload: TStudent) => {
+const createStudentIntoDB = async (
+  passsword: string,
+  payload: TStudent,
+  file?: { path: string },
+) => {
 
 
   //const student = new User(payload); //create instance
@@ -50,7 +55,14 @@ const createStudentIntoDB = async (passsword:string,payload: TStudent) => {
     session.startTransaction()
 //set manuall id 
   user.id = await generateStudentId(admissionSemester);
-
+    const imageName = `${user.id}${payload?.name?.firstName}`;
+    const path = file?.path;
+    let secure_url: string | undefined;
+    if (path) {
+      //send image to cloudinary
+      const uploadResult = await sendImageToCloudinary(imageName, path);
+      secure_url = uploadResult.secure_url;
+    }
    //create a user(transaction - 1)
    const newUser = await User.create([user],{session});// built in static method
 
@@ -62,6 +74,9 @@ const createStudentIntoDB = async (passsword:string,payload: TStudent) => {
    }
     payload.id = newUser[0].id //embed  id
     payload.user = newUser[0]._id // ref _id
+    if (secure_url) {
+      payload.profileImg = secure_url;
+    }
 
     //create student (transaction -2)
     const newStudent = await Student.create([payload],{session});
