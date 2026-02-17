@@ -20,7 +20,7 @@ const router = express.Router();
 router.post('/create-student',auth(USER_ROLE.admin),
   upload.single('file'),
   (req: Request, res: Response, next: NextFunction) => {
-    const { data, student, password } = req.body ?? {};
+    const { data, studentData, password } = req.body ?? {};
     try {
       if (typeof data === 'string') {
         req.body = JSON.parse(data);
@@ -28,14 +28,14 @@ router.post('/create-student',auth(USER_ROLE.admin),
         return;
       }
 
-      if (typeof student === 'string') {
-        req.body = { password, student: JSON.parse(student) };
+      if (typeof studentData === 'string') {
+        req.body = { password, student: JSON.parse(studentData) };
         next();
         return;
       }
 
-      if (typeof student === 'object' && student !== null) {
-        req.body = { password, student };
+      if (typeof studentData === 'object' && studentData !== null) {
+        req.body = { password, studentData };
         next();
         return;
       }
@@ -58,7 +58,57 @@ router.post('/create-student',auth(USER_ROLE.admin),
 validateRequest(studentValidations.createStudentZodValidationSchema),
 userControllers.createStudent);
 
-router.post('/create-instructor',auth(USER_ROLE.admin),validateRequest(instructorValidations.createInstructorValidationSchema) ,userControllers.createInstructor);
+router.post('/create-instructor',
+  upload.single('file'),
+    (req: Request, res: Response, next: NextFunction) => {
+    const { data, instructor, instructorData, password } = req.body ?? {};
+    try {
+      if (typeof data === 'string') {
+        req.body = JSON.parse(data);
+        next();
+        return;
+      }
+
+      if (typeof instructor === 'string') {
+        req.body = { password, instructor: JSON.parse(instructor) };
+        next();
+        return;
+      }
+
+      if (typeof instructorData === 'string') {
+        req.body = { password, instructor: JSON.parse(instructorData) };
+        next();
+        return;
+      }
+
+      if (typeof instructor === 'object' && instructor !== null) {
+        req.body = { password, instructor };
+        next();
+        return;
+      }
+
+      if (typeof instructorData === 'object' && instructorData !== null) {
+        req.body = { password, instructor: instructorData };
+        next();
+        return;
+      }
+
+      next(
+        new AppError(
+          StatusCodes.BAD_REQUEST,
+          'Invalid request body. Send form-data field "data" as JSON string, or send "instructor" as JSON string.',
+        ),
+      );
+    } catch {
+      next(
+        new AppError(
+          StatusCodes.BAD_REQUEST,
+          'Invalid JSON in form-data. Check "data" or "instructor" field.',
+        ),
+      );
+    }
+  },
+  auth(USER_ROLE.admin),validateRequest(instructorValidations.createInstructorValidationSchema) ,userControllers.createInstructor);
 
 router.post('/create-admin',validateRequest(AdminValidations.createAdminValidationSchema) ,userControllers.createAdmin);
 router.post(

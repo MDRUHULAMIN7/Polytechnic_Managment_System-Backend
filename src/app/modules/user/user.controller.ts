@@ -9,10 +9,9 @@ import catchAsync from '../../utils/CatchAsync.js';
 const createStudent = catchAsync(async (req, res) => {
  
     //get user req and data
-    const {password , student} = req.body;
+    const {password , studentData} = req.body;
       //will call service  fun to send this data
-    const result = await userServices.createStudentIntoDB(password, student, req.file);
-    console.log(req.file)
+    const result = await userServices.createStudentIntoDB(password, studentData, req.file);
     sendResponse(res,{
       statusCode:StatusCodes.OK,
        success: true,
@@ -21,10 +20,11 @@ const createStudent = catchAsync(async (req, res) => {
     })
 });
 
-const createInstructor = catchAsync(async (req, res) => {
+const createInstructor = catchAsync(async (req,res) => {
   const { password, instructor: instructorData } = req.body;
+  console.log(password,instructorData,req.file,'file')
 
-  const result = await userServices.createInstructorIntoDB(password, instructorData);
+  const result = await userServices.createInstructorIntoDB(password, instructorData, req.file);
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,

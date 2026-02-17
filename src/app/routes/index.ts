@@ -51,7 +51,7 @@ const moduleRoutes = [
     route: semesterRegistrationRoutes,
   },
   {
-    path: '/offered-courses',
+    path: '/offered-subject',
     route: offeredSubjectRoutes,
   },
   {
