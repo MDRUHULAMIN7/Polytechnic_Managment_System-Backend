@@ -12,10 +12,10 @@ const updateEnrolledSubjectMarksValidationZodSchema = z.object({
     offeredSubject: z.string(),
     student: z.string(),
     subjectMarks: z.object({
-      classTest1: z.number().optional(),
-      midTerm: z.number().optional(),
-      classTest2: z.number().optional(),
-      finalTerm: z.number().optional(),
+      classTest1: z.number().min(0).max(10).optional(),
+      midTerm: z.number().min(0).max(30).optional(),
+      classTest2: z.number().min(0).max(10).optional(),
+      finalTerm: z.number().min(0).max(90).optional(),
     }),
   }),
 });

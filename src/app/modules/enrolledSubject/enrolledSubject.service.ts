@@ -1,4 +1,3 @@
-
 import mongoose from 'mongoose';
 import type { TEnrolledSubject } from './enrolledSubject.interface.js';
 import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
@@ -9,7 +8,10 @@ import EnrolledSubject from './enrolledSubject.model.js';
 import { Subject } from '../subject/subject.model.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import { Instructor } from '../Instructor/Instructor.model.js';
-import { calculateGradeAndPoints } from './enrolledSubject.utils.js';
+import {
+  calculateGradeAndPoints,
+  ENROLLED_SUBJECT_TOTAL_MARKS,
+} from './enrolledSubject.utils.js';
 
 const createEnrolledSubjectIntoDB = async (
   userId: string,
@@ -193,21 +195,27 @@ const updateEnrolledSubjectMarksIntoDB = async (
     throw new AppError(StatusCodes.FORBIDDEN, 'You are forbidden! !');
   }
 
-  const modifiedData: Record<string, unknown> = {
-    ...subjectMarks,
+  const modifiedData: Record<string, unknown> = {};
+
+  const currentSubjectMarks = isSubjectBelongToInstructor.subjectMarks;
+  const mergedSubjectMarks = {
+    classTest1: subjectMarks?.classTest1 ?? currentSubjectMarks.classTest1,
+    midTerm: subjectMarks?.midTerm ?? currentSubjectMarks.midTerm,
+    classTest2: subjectMarks?.classTest2 ?? currentSubjectMarks.classTest2,
+    finalTerm: subjectMarks?.finalTerm ?? currentSubjectMarks.finalTerm,
   };
 
-  if (subjectMarks?.finalTerm) {
-    const { classTest1, classTest2, midTerm, finalTerm } =
-      isSubjectBelongToInstructor.subjectMarks;
+  const isAnyFinalComponentUpdated = subjectMarks?.finalTerm !== undefined;
 
-    const totalMarks =
-      Math.ceil(classTest1 * 0.1) +
-      Math.ceil(midTerm * 0.3) +
-      Math.ceil(classTest2 * 0.1) +
-      Math.ceil(finalTerm * 0.5);
+  if (isAnyFinalComponentUpdated) {
+    const { classTest1, classTest2, midTerm, finalTerm } = mergedSubjectMarks;
 
-    const result = calculateGradeAndPoints(totalMarks);
+    const totalMarks = classTest1 + classTest2 + midTerm + finalTerm;
+
+    const result = calculateGradeAndPoints(
+      totalMarks,
+      ENROLLED_SUBJECT_TOTAL_MARKS,
+    );
 
     modifiedData.grade = result.grade;
     modifiedData.gradePoints = result.gradePoints;
@@ -225,6 +233,7 @@ const updateEnrolledSubjectMarksIntoDB = async (
     modifiedData,
     {
       new: true,
+      runValidators: true,
     },
   );
 

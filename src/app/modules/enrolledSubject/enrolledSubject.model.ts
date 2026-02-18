@@ -28,7 +28,7 @@ const SubjectMarksSchema = new Schema<TEnrolledSubjectMarks>(
     finalTerm: {
       type: Number,
       min: 0,
-      max: 50,
+      max: 90,
       default: 0,
     },
   },
