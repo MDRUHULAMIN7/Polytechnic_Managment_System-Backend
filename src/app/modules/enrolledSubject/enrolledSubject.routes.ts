@@ -7,6 +7,18 @@ import { EnrolledSubjectControllers } from './enrolledSubject.controller.js';
 
 const router = express.Router();
 
+router.get(
+  '/',
+  auth('admin', 'instructor'),
+  EnrolledSubjectControllers.getAllEnrolledSubjects,
+);
+
+router.get(
+  '/my-enrolled-subjects',
+  auth('student'),
+  EnrolledSubjectControllers.getMyEnrolledSubjects,
+);
+
 router.post(
   '/create-enrolled-subject',
   auth('student'),

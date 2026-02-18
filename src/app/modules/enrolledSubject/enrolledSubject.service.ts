@@ -12,6 +12,7 @@ import {
   calculateGradeAndPoints,
   ENROLLED_SUBJECT_TOTAL_MARKS,
 } from './enrolledSubject.utils.js';
+import QueryBuilder from '../../../builder/QueryBuilder.js';
 
 const createEnrolledSubjectIntoDB = async (
   userId: string,
@@ -95,9 +96,7 @@ const createEnrolledSubjectIntoDB = async (
 
   // total enrolled credits + new enrolled subject credit > maxCredit
   const totalCredits =
-    enrolledSubjects.length > 0
-      ? enrolledSubjects[0].totalEnrolledCredits
-      : 0;
+    enrolledSubjects.length > 0 ? enrolledSubjects[0].totalEnrolledCredits : 0;
 
   if (totalCredits && maxCredit && totalCredits + currentCredit > maxCredit) {
     throw new AppError(
@@ -240,7 +239,50 @@ const updateEnrolledSubjectMarksIntoDB = async (
   return result;
 };
 
+const getAllEnrolledSubjectsFromDB = async (query: Record<string, unknown>) => {
+  const enrolledSubjectQuery = new QueryBuilder(
+    EnrolledSubject.find()
+      .select(
+        ' subject student instructor subjectMarks grade gradePoints isCompleted',
+      )
+      .populate('academicSemester',"name year startMonth")
+      .populate('subject', 'title code credits')
+      .populate('student', 'id name')
+      .populate('instructor', 'id name designation')
+      .lean(),
+    query,
+  )
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const result = await enrolledSubjectQuery.modelQuery;
+  return result;
+};
+
+const getMyEnrolledSubjectsFromDB = async (userId: string) => {
+  const student = await Student.findOne({ id: userId }, { _id: 1 });
+
+  if (!student) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
+  }
+
+  const result = await EnrolledSubject.find({
+    student: student._id,
+  })
+    .populate('semesterRegistration', 'academicSemester status shift startDate endDate')
+    .populate('offeredSubject', 'section days startTime endTime')
+    .populate('subject', 'title code credits regulation')
+    .populate('instructor', 'id name designation email')
+    .sort('-_id');
+
+  return result;
+};
+
 export const EnrolledSubjectServices = {
   createEnrolledSubjectIntoDB,
   updateEnrolledSubjectMarksIntoDB,
+  getAllEnrolledSubjectsFromDB,
+  getMyEnrolledSubjectsFromDB,
 };

@@ -18,6 +18,33 @@ const createEnrolledSubject = catchAsync(async (req, res) => {
   });
 });
 
+const getAllEnrolledSubjects = catchAsync(async (req, res) => {
+  const result = await EnrolledSubjectServices.getAllEnrolledSubjectsFromDB(
+    req.query,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Enrolled subjects retrieved succesfully',
+    data: result,
+  });
+});
+
+const getMyEnrolledSubjects = catchAsync(async (req, res) => {
+  const userId = req.user.userId;
+  const result = await EnrolledSubjectServices.getMyEnrolledSubjectsFromDB(
+    userId,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'My enrolled subjects retrieved succesfully',
+    data: result,
+  });
+});
+
 const updateEnrolledSubjectMarks = catchAsync(async (req, res) => {
   const instructorId = req.user.userId;
   const result =
@@ -36,5 +63,7 @@ const updateEnrolledSubjectMarks = catchAsync(async (req, res) => {
 
 export const EnrolledSubjectControllers = {
   createEnrolledSubject,
+  getAllEnrolledSubjects,
+  getMyEnrolledSubjects,
   updateEnrolledSubjectMarks,
 };
