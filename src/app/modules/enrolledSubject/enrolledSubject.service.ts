@@ -258,7 +258,11 @@ const getAllEnrolledSubjectsFromDB = async (query: Record<string, unknown>) => {
     .fields();
 
   const result = await enrolledSubjectQuery.modelQuery;
-  return result;
+  const meta = await enrolledSubjectQuery.countTotal();
+  return {
+    meta,
+    result,
+  };
 };
 
 const getMyEnrolledSubjectsFromDB = async (userId: string) => {

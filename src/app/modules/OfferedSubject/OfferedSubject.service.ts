@@ -140,7 +140,11 @@ const getAllOfferedSubjectsFromDB = async (query: Record<string, unknown>) => {
     .fields();
 
   const result = await offeredSubjectQuery.modelQuery;
-  return result;
+  const meta = await offeredSubjectQuery.countTotal();
+  return {
+    meta,
+    result,
+  };
 };
 
 const getSingleOfferedSubjectFromDB = async (id: string) => {

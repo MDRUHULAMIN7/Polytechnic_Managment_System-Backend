@@ -23,7 +23,11 @@ const getAllSubjectsFromDB = async (query: Record<string, unknown>) => {
     .fields();
 
   const result = await subjectQuery.modelQuery;
-  return result;
+  const meta = await subjectQuery.countTotal();
+  return {
+    meta,
+    result,
+  };
 };
 
 // Get Single Subject

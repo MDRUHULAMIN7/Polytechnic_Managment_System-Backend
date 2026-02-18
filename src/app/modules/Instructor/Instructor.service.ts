@@ -20,7 +20,11 @@ const getAllInstructorsFromDB = async (query: Record<string, unknown>) => {
     .fields();
 
   const result = await instructorQuery.modelQuery;
-  return result;
+  const meta = await instructorQuery.countTotal();
+  return {
+    meta,
+    result,
+  };
 };
 
 const getSingleInstructorFromDB = async (id: string) => {
