@@ -17,7 +17,7 @@ const router = express.Router();
 
 
 //route will be call controller function
-router.post('/create-student',auth(USER_ROLE.admin),
+router.post('/create-student',auth(USER_ROLE.admin,USER_ROLE.superAdmin),
   upload.single('file'),
   (req: Request, res: Response, next: NextFunction) => {
     const { data, studentData, password } = req.body ?? {};

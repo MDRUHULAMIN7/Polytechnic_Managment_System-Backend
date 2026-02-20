@@ -39,8 +39,10 @@ const createStudentIntoDB = async (
 
   //find academic semester info 
   const  admissionSemester = await AcademicSemester.findById(payload.admissionSemester)
-  //find academic semester info 
+
+  //find academic department info 
   const  academicDepartment = await AcademicDepartment.findById(payload.academicDepartment)
+
        // Handle null case
   if (!admissionSemester || !academicDepartment) {
      throw new AppError(
@@ -48,7 +50,7 @@ const createStudentIntoDB = async (
       'Academic semester or Academic Department  not found!',
     );
   }
-
+  payload.academicInstructor = academicDepartment.academicInstructor
   const session = await mongoose.startSession()
   try{
 
@@ -172,7 +174,7 @@ const createInstructorIntoDB = async (password: string, payload: TInstructor,
   }
 };
 
-const createAdminIntoDB = async (password: string, payload: TAdmin) => {
+const createAdminIntoDB = async (password: string, payload: TAdmin,file?: { path: string },) => {
   // create a user object
   const userData: Partial<TUser> = {};
 
@@ -190,9 +192,18 @@ const createAdminIntoDB = async (password: string, payload: TAdmin) => {
     session.startTransaction();
     //set  generated id
     userData.id = await generateAdminId();
+    const imageName = `${userData.id}${payload?.name?.firstName}`;
+    const path = file?.path;
+    let secure_url: string | undefined;
+    if (path) {
+      //send image to cloudinary
+      const uploadResult = await sendImageToCloudinary(imageName, path);
+      secure_url = uploadResult.secure_url;
+    }
 
     // create a user (transaction-1)
     const newUser = await User.create([userData], { session }); 
+    
 
     //create a admin
     if (!newUser.length) {
@@ -201,6 +212,9 @@ const createAdminIntoDB = async (password: string, payload: TAdmin) => {
     // set id , _id as user
     payload.id = newUser[0].id;
     payload.user = newUser[0]._id; //reference _id
+            if (secure_url) {
+      payload.profileImg = secure_url;
+    }
 
     // create a admin (transaction-2)
     const newAdmin = await Admin.create([payload], { session });
