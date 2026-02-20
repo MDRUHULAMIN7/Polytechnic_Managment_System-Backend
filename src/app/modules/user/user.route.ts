@@ -108,16 +108,30 @@ router.post('/create-instructor',
       );
     }
   },
-  auth(USER_ROLE.admin),validateRequest(instructorValidations.createInstructorValidationSchema) ,userControllers.createInstructor);
+  auth(USER_ROLE.admin,USER_ROLE.superAdmin),validateRequest(instructorValidations.createInstructorValidationSchema) ,userControllers.createInstructor);
 
-router.post('/create-admin',validateRequest(AdminValidations.createAdminValidationSchema) ,userControllers.createAdmin);
+router.post(
+  '/create-admin',
+  auth(USER_ROLE.superAdmin),
+  validateRequest(AdminValidations.createAdminValidationSchema),
+  userControllers.createAdmin,
+);
 router.post(
   '/change-status/:id',
-  auth('admin'),
+  auth(USER_ROLE.superAdmin),
   validateRequest(UserValidation.changeStatusValidationSchema),
   userControllers.changeStatus,
 );
 
-router.get('/me',auth('admin','instructor','student') ,userControllers.getMe);
+router.get(
+  '/me',
+  auth(
+    USER_ROLE.admin,
+    USER_ROLE.instructor,
+    USER_ROLE.student,
+    USER_ROLE.superAdmin,
+  ),
+  userControllers.getMe,
+);
 
 export const UserRoutes = router;

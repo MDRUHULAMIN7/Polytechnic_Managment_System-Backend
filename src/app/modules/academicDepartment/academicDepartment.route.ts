@@ -17,17 +17,23 @@ router.post(
 
 router.get(
   '/:departmentId',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
   AcademicDepartmentControllers.getSingleAcademicDepartment,
 );
 
 router.patch(
   '/:departmentId',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
   validateRequest(
     AcademicDepartmentValidation.updateAcademicDepartmentValidationSchema,
   ),
   AcademicDepartmentControllers.updateAcademicDeartment,
 );
 
-router.get('/', AcademicDepartmentControllers.getAllAcademicDepartments);
+router.get(
+  '/',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  AcademicDepartmentControllers.getAllAcademicDepartments,
+);
 
 export const AcademicDepartmentRoutes = router;

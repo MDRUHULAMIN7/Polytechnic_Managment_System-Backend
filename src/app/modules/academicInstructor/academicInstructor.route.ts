@@ -16,16 +16,25 @@ router.post(
   AcademicInstructorControllers.createAcademicInstructor,
 );
 
-router.get('/:InstructorId', AcademicInstructorControllers.getSingleAcademicInstructor);
+router.get(
+  '/:InstructorId',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  AcademicInstructorControllers.getSingleAcademicInstructor,
+);
 
 router.patch(
   '/:InstructorId',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
   validateRequest(
     AcademicInstructorValidation.updateAcademicInstructorValidationSchema,
   ),
   AcademicInstructorControllers.updateAcademicInstructor,
 );
 
-router.get('/', AcademicInstructorControllers.getAllAcademicInstructors);
+router.get(
+  '/',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  AcademicInstructorControllers.getAllAcademicInstructors,
+);
 
 export const AcademicInstructorRoutes = router;

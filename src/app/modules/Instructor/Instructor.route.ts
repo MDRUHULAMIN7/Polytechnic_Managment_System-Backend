@@ -7,16 +7,29 @@ import { USER_ROLE } from '../user/user.constant.js';
 
 const router = express.Router();
 
-router.get('/:id', InstructorControllers.getSingleInstructor);
+router.get(
+  '/:id',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  InstructorControllers.getSingleInstructor,
+);
 
 router.patch(
   '/:id',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
   validateRequest(updateInstructorValidationSchema),
   InstructorControllers.updateInstructor,
 );
 
-router.delete('/:id', InstructorControllers.deleteInstructor);
+router.delete(
+  '/:id',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  InstructorControllers.deleteInstructor,
+);
 
-router.get('/',auth(USER_ROLE.admin), InstructorControllers.getAllInstructors);
+router.get(
+  '/',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  InstructorControllers.getAllInstructors,
+);
 
 export const InstructorRoutes = router;
