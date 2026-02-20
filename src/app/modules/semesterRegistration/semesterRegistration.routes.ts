@@ -47,10 +47,10 @@ router.get(
   SemesterRegistrationController.getSingleSemesterRegistration,
 );
 
-// router.delete(
-//   '/:id',
-//   SemesterRegistrationController.deleteSemesterRegistration,
-// );
+router.delete(
+  '/:id', auth(USER_ROLE.superAdmin, USER_ROLE.admin),
+  SemesterRegistrationController.deleteSemesterRegistration,
+);
 
 router.get(
   '/',

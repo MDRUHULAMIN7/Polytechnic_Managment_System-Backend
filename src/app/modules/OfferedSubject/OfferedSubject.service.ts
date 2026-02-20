@@ -47,6 +47,12 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
       'Semester registration not found !',
     );
   }
+  if (isSemesterRegistrationExits && isSemesterRegistrationExits.status === 'ENDED') {
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'The Semester registration was ENDED',
+    );
+  }
 
   const academicSemester = isSemesterRegistrationExits.academicSemester;
 

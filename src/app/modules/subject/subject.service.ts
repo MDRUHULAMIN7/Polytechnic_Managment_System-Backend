@@ -6,6 +6,7 @@ import QueryBuilder from '../../../builder/QueryBuilder.js';
 import { SubjectSearchableFields } from './subjecr.constant.js';
 import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
+import { Instructor } from '../Instructor/Instructor.model.js';
 
 // Create Subject
 const createSubjectIntoDB = async (payload: TSubject) => {
@@ -106,6 +107,62 @@ const assignInstructorsWithSubjectIntoDB = async (
   id: string,
   payload: Partial<TSubjectInstructor>
 ) => {
+  const instructorIds = payload.instructors || [];
+
+  if (instructorIds.length) {
+    const invalidInstructorIds = instructorIds.filter(
+      (instructorId) => !mongoose.isValidObjectId(instructorId)
+    );
+
+    if (invalidInstructorIds.length) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        `Invalid instructor id(s): ${invalidInstructorIds.join(', ')}`
+      );
+    }
+
+    const existingInstructors = await Instructor.find({
+      _id: { $in: instructorIds },
+    }).select('_id');
+
+    const existingInstructorIdSet = new Set(
+      existingInstructors.map((instructor) => instructor._id.toString())
+    );
+
+    const missingInstructorIds = instructorIds.filter(
+      (instructorId) =>
+        !existingInstructorIdSet.has(instructorId.toString())
+    );
+
+    if (missingInstructorIds.length) {
+      throw new AppError(
+        StatusCodes.NOT_FOUND,
+        `Instructors not found : ${missingInstructorIds.join(', ')}`
+      );
+    }
+
+    const existingSubjectInstructor = await SubjectInstructor.findOne({
+      subject: id,
+    }).select('instructors');
+
+    const assignedInstructorIdSet = new Set(
+      (existingSubjectInstructor?.instructors || []).map((instructorId) =>
+        instructorId.toString()
+      )
+    );
+
+    const alreadyAssignedInstructorIds = instructorIds.filter((instructorId) =>
+      assignedInstructorIdSet.has(instructorId.toString())
+    );
+
+    if (alreadyAssignedInstructorIds.length) {
+      throw new AppError(
+        StatusCodes.CONFLICT,
+        `Instructor already assigned for this subject: ${alreadyAssignedInstructorIds.join(', ')}`
+      );
+    }
+  }
+
   const result = await SubjectInstructor.findByIdAndUpdate(
     id,
     {
