@@ -173,6 +173,12 @@ const assignInstructorsWithSubjectIntoDB = async (
   );
   return result;
 };
+const getInstructorWithSubjectFromDB = async (subjectId: string) => {
+  const result = await SubjectInstructor.findOne({ subject: subjectId }).populate(
+    'instructors',
+  );
+  return result;
+};
 
 // Remove Instructors from Subject
 const removeInstructorsFromSubjectFromDB = async (
@@ -194,5 +200,6 @@ export const SubjectServices = {
   updateSubjectIntoDB,
   deleteSubjectFromDB,
   assignInstructorsWithSubjectIntoDB,
+  getInstructorWithSubjectFromDB,
   removeInstructorsFromSubjectFromDB,
 };

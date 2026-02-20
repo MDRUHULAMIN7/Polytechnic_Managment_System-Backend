@@ -84,6 +84,18 @@ const assignInstructorsWithSubject = catchAsync(async (req, res) => {
   });
 });
 
+const getInstructorsWithSubject = catchAsync(async (req, res) => {
+  const { subjectId } = req.params;
+
+  const result = await SubjectServices.getInstructorWithSubjectFromDB(subjectId);
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Instructors retrieved succesfully',
+    data: result,
+  });
+});
 // Remove Instructors
 const removeInstructorsFromSubject = catchAsync(async (req, res) => {
   const { subjectId } = req.params;
@@ -110,5 +122,6 @@ export const SubjectControllers = {
   updateSubject,
   deleteSubject,
   assignInstructorsWithSubject,
+  getInstructorsWithSubject,
   removeInstructorsFromSubject,
 };

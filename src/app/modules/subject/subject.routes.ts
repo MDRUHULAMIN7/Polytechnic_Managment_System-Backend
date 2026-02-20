@@ -45,6 +45,18 @@ router.put(
   validateRequest(SubjectValidations.instructorsWithSubjectValidationSchema),
   SubjectControllers.assignInstructorsWithSubject
 );
+router.get(
+  '/:subjectId/get-instructor',
+  auth(
+    USER_ROLE.superAdmin,
+    USER_ROLE.admin,
+    USER_ROLE.instructor,
+    USER_ROLE.student,
+  ),
+  SubjectControllers.getInstructorsWithSubject,
+);
+
+
 
 // Remove Instructors from Subject
 router.delete(
