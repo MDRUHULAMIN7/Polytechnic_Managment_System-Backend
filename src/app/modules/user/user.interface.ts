@@ -7,7 +7,7 @@ export type TUser = {
     email : string;
     needsPasswordChange : boolean;
     passwordChangedAt?: Date;
-    role : 'admin' | 'student' | 'instructor';
+    role : 'admin' | 'student' | 'instructor' |'superAdmin';
     status?: "active" | "blocked";
     isDeleted : boolean;
 
