@@ -32,6 +32,7 @@ export type TInstructor = {
   permanentAddress: string;
   profileImg?: string;
   academicDepartment: Types.ObjectId;
+  academicInstructor: Types.ObjectId;
   isDeleted: boolean;
 };
 

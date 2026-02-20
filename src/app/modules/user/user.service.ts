@@ -124,7 +124,7 @@ const createInstructorIntoDB = async (password: string, payload: TInstructor,
   if (!academicDepartment) {
     throw new AppError(400, 'Academic department not found');
   }
-
+   payload.academicInstructor = academicDepartment.academicInstructor
   const session = await mongoose.startSession();
 
   try {

@@ -79,8 +79,13 @@ const instructorSchema = new Schema<TInstructor, InstructorModel>(
     profileImg: { type: String ,default:''},
     academicDepartment: {
       type: Schema.Types.ObjectId,
-      required: [true, 'AcademicDepartment id is required'],
+      required: [true, 'Academic Department is required'],
       ref: 'AcademicDepartment',
+    },
+    academicInstructor: {
+      type: Schema.Types.ObjectId,
+      required: [true, 'Academic Instructor is required'],
+      ref: 'AcademicInstructor',
     },
     isDeleted: {
       type: Boolean,
