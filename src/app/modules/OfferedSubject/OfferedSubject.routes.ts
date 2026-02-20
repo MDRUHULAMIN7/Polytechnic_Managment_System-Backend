@@ -11,10 +11,15 @@ router.get(
   auth(
     USER_ROLE.admin,
     USER_ROLE.instructor,
-    USER_ROLE.student,
     USER_ROLE.superAdmin,
   ),
   OfferedSubjectControllers.getAllOfferedSubjects,
+);
+
+router.get(
+  '/my-offered-subject',
+  auth(USER_ROLE.student),
+  OfferedSubjectControllers.getMyOfferedSubject,
 );
 
 router.get(
@@ -22,7 +27,6 @@ router.get(
   auth(
     USER_ROLE.admin,
     USER_ROLE.instructor,
-    USER_ROLE.student,
     USER_ROLE.superAdmin,
   ),
   OfferedSubjectControllers.getSingleOfferedSubjects,
@@ -42,9 +46,10 @@ router.patch(
   OfferedSubjectControllers.updateOfferedSubject,
 );
 
-// router.delete(
-//   '/:id',
-//   OfferedSubjectControllers.deleteOfferedSubjectFromDB,
-// );
+router.delete(
+  '/:id',
+   auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  OfferedSubjectControllers.deleteOfferedSubjectFromDB,
+);
 
 export const offeredSubjectRoutes = router;

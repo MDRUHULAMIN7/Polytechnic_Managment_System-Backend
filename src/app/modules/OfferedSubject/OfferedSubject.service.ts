@@ -9,6 +9,7 @@ import { Instructor } from "../Instructor/Instructor.model.js";
 import { OfferedSubject } from "./OfferedSubject.model.js";
 import { hasTimeConflict } from "./OfferedSubject.utils.js";
 import QueryBuilder from "../../../builder/QueryBuilder.js";
+import { Student } from "../student/student.model.js";
 
 
 const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
@@ -114,7 +115,7 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
   // get the schedules of the instructor
   const assignedSchedules = await OfferedSubject.find({
     semesterRegistration,
-    Instructor,
+    instructor,
     days: { $in: days },
   }).select('days startTime endTime');
 
@@ -149,6 +150,201 @@ const getAllOfferedSubjectsFromDB = async (query: Record<string, unknown>) => {
   const meta = await offeredSubjectQuery.countTotal();
   return {
     meta,
+    result,
+  };
+};
+
+const getMyOfferedSubjectFromDB = async (
+  userId: string,
+  query: Record<string, unknown>,
+) => {
+  //pagination setup
+
+  const page = Number(query?.page) || 1;
+  const limit = Number(query?.limit) || 10;
+  const skip = (page - 1) * limit;
+
+  const student = await Student.findOne({ id: userId });
+  // find the student
+  if (!student) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'User is not found');
+  }
+
+  // find all ongoing registrations (can exist by multiple shifts)
+  const currentOngoingRegistrationSemesters = await SemesterRegistration.find({
+    status: 'ONGOING',
+  }).select('_id academicSemester');
+
+  if (!currentOngoingRegistrationSemesters.length) {
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'There is no ongoing semester registration!',
+    );
+  }
+  const currentOngoingRegistrationSemesterIds =
+    currentOngoingRegistrationSemesters.map((registration) => registration._id);
+  const currentOngoingAcademicSemesterIds =
+    currentOngoingRegistrationSemesters.map((registration) =>
+      registration.academicSemester,
+    );
+
+  const aggregationQuery = [
+    {
+      $match: {
+        academicSemester: { $in: currentOngoingAcademicSemesterIds },
+        academicInstructor: student.academicInstructor,
+        academicDepartment: student.academicDepartment,
+      },
+    },
+    {
+      $lookup: {
+        from: 'subjects',
+        localField: 'subject',
+        foreignField: '_id',
+        as: 'subject',
+      },
+    },
+    {
+      $unwind: '$subject',
+    },
+    {
+      $lookup: {
+        from: 'enrolledsubjects',
+        let: {
+          currentOngoingRegistrationSemesterIds,
+          currentStudent: student._id,
+        },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  {
+                    $in: [
+                      '$semesterRegistration',
+                      '$$currentOngoingRegistrationSemesterIds',
+                    ],
+                  },
+                  {
+                    $eq: ['$student', '$$currentStudent'],
+                  },
+                  {
+                    $eq: ['$isEnrolled', true],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+        as: 'enrolledSubject',
+      },
+    },
+    {
+      $lookup: {
+        from: 'enrolledsubjects',
+        let: {
+          currentStudent: student._id,
+        },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  {
+                    $eq: ['$student', '$$currentStudent'],
+                  },
+                  {
+                    $eq: ['$isCompleted', true],
+                  },
+                ],
+              },
+            },
+          },
+        ],
+        as: 'completedSubject',
+      },
+    },
+    {
+      $addFields: {
+        completedSubjectIds: {
+          $map: {
+            input: '$completedSubject',
+            as: 'completed',
+            in: '$$completed.subject',
+          },
+        },
+      },
+    },
+    {
+      $addFields: {
+        preRequisiteSubjectIds: {
+          $map: {
+            input: { $ifNull: ['$subject.preRequisiteSubjects', []] },
+            as: 'preRequisiteSubject',
+            in: '$$preRequisiteSubject.subject',
+          },
+        },
+        isAlreadyEnrolled: {
+          $in: [
+            '$subject._id',
+            {
+              $map: {
+                input: { $ifNull: ['$enrolledSubject', []] },
+                as: 'enroll',
+                in: '$$enroll.subject',
+              },
+            },
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        isPreRequisitesFulFilled: {
+          $or: [
+            { $eq: [{ $size: { $ifNull: ['$preRequisiteSubjectIds', []] } }, 0] },
+            {
+              $setIsSubset: [
+                { $ifNull: ['$preRequisiteSubjectIds', []] },
+                { $ifNull: ['$completedSubjectIds', []] },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      $match: {
+        isAlreadyEnrolled: false,
+        isPreRequisitesFulFilled: true,
+      },
+    },
+  ];
+
+  const paginationQuery = [
+    {
+      $skip: skip,
+    },
+    {
+      $limit: limit,
+    },
+  ];
+
+  const result = await OfferedSubject.aggregate([
+    ...aggregationQuery,
+    ...paginationQuery,
+  ]);
+  const total = (await OfferedSubject.aggregate(aggregationQuery)).length;
+
+  const totalPage = Math.ceil(total / limit);
+
+  return {
+    meta: {
+      page,
+      limit,
+      total,
+      totalPage,
+    },
     result,
   };
 };
@@ -212,7 +408,7 @@ const updateOfferedSubjectIntoDB = async (
   // check if the Instructor is available at that time.
   const assignedSchedules = await OfferedSubject.find({
     semesterRegistration,
-    Instructor,
+    instructor,
     days: { $in: days },
   }).select('days startTime endTime');
 
@@ -267,6 +463,7 @@ const deleteOfferedSubjectFromDB = async (id: string) => {
 export const OfferedSubjectServices = {
   createOfferedSubjectIntoDB,
   getAllOfferedSubjectsFromDB,
+  getMyOfferedSubjectFromDB,
   getSingleOfferedSubjectFromDB,
   deleteOfferedSubjectFromDB,
   updateOfferedSubjectIntoDB,

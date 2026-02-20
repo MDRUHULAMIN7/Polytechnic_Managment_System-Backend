@@ -28,6 +28,22 @@ const getAllOfferedSubjects = catchAsync(async (req, res) => {
     data: result,
   });
 });
+const getMyOfferedSubject = catchAsync(async (req, res) => {
+  const userId = req.user.userId;
+  const result = await OfferedSubjectServices.getMyOfferedSubjectFromDB(
+    userId,
+    req.query,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Offered Subject retrieved successfully !',
+    meta: result.meta,
+    data: result.result,
+  });
+});
+
 
 const getSingleOfferedSubjects = catchAsync(
   async (req, res) => {
@@ -58,23 +74,24 @@ const updateOfferedSubject = catchAsync(async (req, res) => {
   });
 });
 
-// const deleteOfferedSubjectFromDB = catchAsync(
-//   async (req, res) => {
-//     const { id } = req.params;
-//     const result = await OfferedSubjectServices.de(id);
-//     sendResponse(res, {
-//       statusCode: StatusCodes.OK,
-//       success: true,
-//       message: 'OfferedSubject deleted successfully',
-//       data: result,
-//     });
-//   },
-// );
+const deleteOfferedSubjectFromDB = catchAsync(
+  async (req, res) => {
+    const { id } = req.params;
+    const result = await OfferedSubjectServices.deleteOfferedSubjectFromDB(id);
+    sendResponse(res, {
+      statusCode: StatusCodes.OK,
+      success: true,
+      message: 'OfferedSubject deleted successfully',
+      data: result,
+    });
+  },
+);
 
 export const OfferedSubjectControllers = {
   createOfferedSubject,
   getAllOfferedSubjects,
+  getMyOfferedSubject ,
   getSingleOfferedSubjects,
   updateOfferedSubject,
-  // deleteOfferedSubjectFromDB,
+  deleteOfferedSubjectFromDB,
 };
