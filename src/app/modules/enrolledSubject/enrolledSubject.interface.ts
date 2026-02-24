@@ -14,7 +14,7 @@ export type TEnrolledSubject = {
   academicSemester: Types.ObjectId;
   academicInstructor: Types.ObjectId;
   academicDepartment: Types.ObjectId;
-  offeredSubject: Types.ObjectId;
+  offeredSubject : Types.ObjectId;
   subject: Types.ObjectId;
   student: Types.ObjectId;
   instructor: Types.ObjectId;

@@ -9,7 +9,10 @@ import { User } from "../user/user.model.js";
 
 
 const getAllAdminsFromDB = async (query: Record<string, unknown>) => {
-  const adminQuery = new QueryBuilder(Admin.find(), query)
+  const adminQuery = new QueryBuilder(
+    Admin.find().populate('user', '_id id role email status'),
+    query,
+  )
     .search(AdminSearchableFields)
     .filter()
     .sort()
@@ -25,7 +28,10 @@ const getAllAdminsFromDB = async (query: Record<string, unknown>) => {
 };
 
 const getSingleAdminFromDB = async (id: string) => {
-  const result = await Admin.findById(id);
+  const result = await Admin.findById(id).populate(
+    'user',
+    '_id id role email status',
+  );
   return result;
 };
 

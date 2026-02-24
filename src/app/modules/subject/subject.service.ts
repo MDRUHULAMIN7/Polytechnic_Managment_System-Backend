@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 import type { TSubject, TSubjectInstructor } from './subject.interface.js';
 import { Subject, SubjectInstructor } from './subject.model.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
-import { SubjectSearchableFields } from './subjecr.constant.js';
 import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
 import { Instructor } from '../Instructor/Instructor.model.js';
@@ -16,8 +15,28 @@ const createSubjectIntoDB = async (payload: TSubject) => {
 
 // Get All Subjects
 const getAllSubjectsFromDB = async (query: Record<string, unknown>) => {
-  const subjectQuery = new QueryBuilder(Subject.find(), query)
-    .search(SubjectSearchableFields)
+  const searchTerm = typeof query.searchTerm === 'string' ? query.searchTerm.trim() : '';
+  const searchConditions: Record<string, unknown>[] = [];
+  const notDeletedCondition = { isDeleted: { $ne: true } };
+
+  if (searchTerm) {
+    searchConditions.push(
+      { title: { $regex: searchTerm, $options: 'i' } },
+      { prefix: { $regex: searchTerm, $options: 'i' } },
+    );
+
+    const numericSearchTerm = Number(searchTerm);
+    if (!Number.isNaN(numericSearchTerm)) {
+      searchConditions.push({ code: numericSearchTerm });
+    }
+  }
+
+  const subjectQuery = new QueryBuilder(
+    searchConditions.length > 0
+      ? Subject.find({ ...notDeletedCondition, $or: searchConditions })
+      : Subject.find(notDeletedCondition),
+    query,
+  )
     .filter()
     .sort()
     .paginate()
@@ -33,7 +52,9 @@ const getAllSubjectsFromDB = async (query: Record<string, unknown>) => {
 
 // Get Single Subject
 const getSingleSubjectFromDB = async (id: string) => {
-  const result = await Subject.findById(id).populate('preRequisiteSubjects.subject');
+  const result = await Subject.findOne({ _id: id, isDeleted: { $ne: true } }).populate(
+    'preRequisiteSubjects.subject',
+  );
   if (!result) {
     throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found!');
   }

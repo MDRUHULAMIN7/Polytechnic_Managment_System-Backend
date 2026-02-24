@@ -207,7 +207,30 @@ const updateCurriculumIntoDB = async (
     payload.semisterRegistration ?? existingCurriculum.semisterRegistration;
   const effectiveSession = payload.session ?? existingCurriculum.session;
   const effectiveRegulation = payload.regulation ?? existingCurriculum.regulation;
-  const effectiveSubjects = payload.subjects ?? existingCurriculum.subjects;
+  const existingSubjectIds = existingCurriculum.subjects.map((subject) =>
+    subject.toString(),
+  );
+
+  let effectiveSubjects: TCurriculum['subjects'] = existingCurriculum.subjects;
+
+  if (payload.subjects) {
+    const requestedSubjectIds = payload.subjects.map((subject) =>
+      subject.toString(),
+    );
+
+    const uniqueRequestedSubjectIds = [...new Set(requestedSubjectIds)];
+
+    if (uniqueRequestedSubjectIds.length !== requestedSubjectIds.length) {
+      throw new AppError(StatusCodes.BAD_REQUEST, 'Duplicate subject is not allowed!');
+    }
+
+    const mergedSubjectIds = [
+      ...new Set([...existingSubjectIds, ...requestedSubjectIds]),
+    ];
+
+    effectiveSubjects = mergedSubjectIds as unknown as TCurriculum['subjects'];
+    payload.subjects = mergedSubjectIds as unknown as TCurriculum['subjects'];
+  }
 
   if (payload.academicDepartment) {
     const isAcademicDepartmentExists = await AcademicDepartment.findById(
@@ -251,7 +274,11 @@ const updateCurriculumIntoDB = async (
     );
   }
 
-  if (payload.subjects || payload.regulation !== undefined || payload.totalCredit !== undefined) {
+  if (
+    payload.subjects ||
+    payload.regulation !== undefined ||
+    payload.totalCredit !== undefined
+  ) {
     const calculatedCredit = await validateSubjectsAndCalculateCredit(
       effectiveSubjects,
       effectiveRegulation,

@@ -10,7 +10,9 @@ import { User } from "../user/user.model.js";
 
 const getAllInstructorsFromDB = async (query: Record<string, unknown>) => {
   const instructorQuery = new QueryBuilder(
-    Instructor.find().populate('academicDepartment'),
+    Instructor.find()
+      .populate('academicDepartment')
+      .populate('user', '_id id role email status'),
     query,
   )
     .search(InstructorSearchableFields)

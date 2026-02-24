@@ -10,18 +10,23 @@ import { User } from "../modules/user/user.model.js";
 
 const auth = (...requiredRoles: TUserRole[]) => {
   return catchAsync(async (req, res, next) => {
-    const token = req.headers.authorization;
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : authHeader;
 
     // checking if the token is missing
     if (!token) {
       throw new AppError(StatusCodes.UNAUTHORIZED, 'You are not authorized!');
     }
 
-    // checking if the given token is valid
-    const decoded = jwt.verify(
-      token,
-      config.jwt_access_secret as string,
-    ) as JwtPayload;
+    let decoded: JwtPayload;
+    try {
+      // checking if the given token is valid
+      decoded = jwt.verify(token, config.jwt_access_secret as string) as JwtPayload;
+    } catch {
+      throw new AppError(StatusCodes.UNAUTHORIZED, 'Invalid or expired token!');
+    }
 
     const { role, userId, iat } = decoded;
 

@@ -50,3 +50,4 @@ router.get(
 );
 
 export const CurriculumRoutes = router;
+

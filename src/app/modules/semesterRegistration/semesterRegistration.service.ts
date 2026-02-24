@@ -5,8 +5,92 @@ import type { TSemesterRegistration } from './semesterRegistration.interface.js'
 import { SemesterRegistration } from './semesterRegistration.model.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
 import { AcademicSemester } from '../academicSemester/academicSemesterModel.js';
+import { Months } from '../academicSemester/academicSemester.constant.js';
+import type { TMonths } from '../academicSemester/academicSemester.interface.js';
 import mongoose from 'mongoose';
 import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
+
+const monthToIndexMap = new Map(Months.map((month, index) => [month, index]));
+
+const parseDateOrThrow = (value: Date | string, fieldName: string) => {
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `${fieldName} must be a valid date`,
+    );
+  }
+
+  return parsedDate;
+};
+
+const getSemesterDurationWindow = (academicSemester: {
+  year: string;
+  startMonth: TMonths;
+  endMonth: TMonths;
+}) => {
+  const semesterYear = Number(academicSemester.year);
+
+  if (!Number.isInteger(semesterYear)) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Academic semester year is invalid: ${academicSemester.year}`,
+    );
+  }
+
+  const startMonthIndex = monthToIndexMap.get(academicSemester.startMonth);
+  const endMonthIndex = monthToIndexMap.get(academicSemester.endMonth);
+
+  if (startMonthIndex === undefined || endMonthIndex === undefined) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Academic semester month range is invalid',
+    );
+  }
+
+  const endYear =
+    endMonthIndex >= startMonthIndex ? semesterYear : semesterYear + 1;
+
+  const durationStart = new Date(semesterYear, startMonthIndex, 1, 0, 0, 0, 0);
+  const durationEnd = new Date(endYear, endMonthIndex + 1, 0, 23, 59, 59, 999);
+
+  return { durationStart, durationEnd, endYear };
+};
+
+const validateRegistrationTimelineAgainstSemester = (params: {
+  academicSemester: { year: string; startMonth: TMonths; endMonth: TMonths };
+  startDateValue: Date | string;
+  endDateValue: Date | string;
+}) => {
+  const { academicSemester, startDateValue, endDateValue } = params;
+
+  const startDate = parseDateOrThrow(startDateValue, 'startDate');
+  const endDate = parseDateOrThrow(endDateValue, 'endDate');
+
+  if (endDate <= startDate) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'End date must be later than start date',
+    );
+  }
+
+  const { durationStart, durationEnd, endYear } =
+    getSemesterDurationWindow(academicSemester);
+
+  const isOutsideSemesterWindow =
+    startDate < durationStart ||
+    startDate > durationEnd ||
+    endDate < durationStart ||
+    endDate > durationEnd;
+
+  if (isOutsideSemesterWindow) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Registration timeline must stay within ${academicSemester.startMonth} ${academicSemester.year} to ${academicSemester.endMonth} ${endYear}`,
+    );
+  }
+};
 
 const createSemesterRegistrationIntoDB = async (
   payload: TSemesterRegistration,
@@ -23,6 +107,15 @@ const createSemesterRegistrationIntoDB = async (
       'This academic semester not found!',
     );
   }
+  validateRegistrationTimelineAgainstSemester({
+    academicSemester: {
+      year: academicSemesterExists.year,
+      startMonth: academicSemesterExists.startMonth,
+      endMonth: academicSemesterExists.endMonth,
+    },
+    startDateValue: payload.startDate,
+    endDateValue: payload.endDate,
+  });
 
   // Step 2: Check if this specific academicSemester + shift combination is already registered with 'UPCOMING' or 'ONGOING' status
   const isDuplicateActiveRegistration = await SemesterRegistration.findOne({
@@ -86,6 +179,11 @@ const updateSemesterRegistrationIntoDB = async (
     existingSemesterRegistration?.academicSemester;
   const currentShift = existingSemesterRegistration?.shift;
   const requestedStatus = payload?.status;
+  let semesterForTimelineValidation: {
+    year: string;
+    startMonth: TMonths;
+    endMonth: TMonths;
+  } | null = null;
 
   // Step 2: If the current semester registration is 'ENDED', we will not update anything
   if (currentSemesterStatus === RegistrationStatus.ENDED) {
@@ -163,6 +261,11 @@ const updateSemesterRegistrationIntoDB = async (
     if (!academicSemesterExists) {
       throw new AppError(StatusCodes.NOT_FOUND, 'Academic semester not found!');
     }
+    semesterForTimelineValidation = {
+      year: academicSemesterExists.year,
+      startMonth: academicSemesterExists.startMonth,
+      endMonth: academicSemesterExists.endMonth,
+    };
 
     // Check for duplicate with new academicSemester + current status + current shift
     const duplicateWithNewAcademicSemester = await SemesterRegistration.findOne(
@@ -312,6 +415,27 @@ const updateSemesterRegistrationIntoDB = async (
       );
     }
   }
+  if (!semesterForTimelineValidation) {
+    const currentAcademicSemesterDoc = await AcademicSemester.findById(
+      currentAcademicSemester,
+    ).select('year startMonth endMonth');
+
+    if (!currentAcademicSemesterDoc) {
+      throw new AppError(StatusCodes.NOT_FOUND, 'Academic semester not found!');
+    }
+
+    semesterForTimelineValidation = {
+      year: currentAcademicSemesterDoc.year,
+      startMonth: currentAcademicSemesterDoc.startMonth,
+      endMonth: currentAcademicSemesterDoc.endMonth,
+    };
+  }
+
+  validateRegistrationTimelineAgainstSemester({
+    academicSemester: semesterForTimelineValidation,
+    startDateValue: payload.startDate ?? existingSemesterRegistration.startDate,
+    endDateValue: payload.endDate ?? existingSemesterRegistration.endDate,
+  });
 
   // Step 3: If status is 'UPCOMING', allow all updates
 

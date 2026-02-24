@@ -16,16 +16,7 @@ router.post(
   SemesterRegistrationController.createSemesterRegistration,
 );
 
-router.get(
-  '/:id',
-  auth(
-    USER_ROLE.admin,
-    USER_ROLE.instructor,
-    USER_ROLE.student,
-    USER_ROLE.superAdmin,
-  ),
-  SemesterRegistrationController.getSingleSemesterRegistration,
-);
+
 
 router.patch(
   '/:id',

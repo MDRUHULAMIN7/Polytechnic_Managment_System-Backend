@@ -140,7 +140,14 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
 };
 
 const getAllOfferedSubjectsFromDB = async (query: Record<string, unknown>) => {
-  const offeredSubjectQuery = new QueryBuilder(OfferedSubject.find(), query)
+  const offeredSubjectQuery = new QueryBuilder(
+    OfferedSubject.find()
+      .populate('academicSemester', 'name year')
+      .populate('academicDepartment', 'name')
+      .populate('subject', 'title')
+      .populate('instructor', 'id name designation'),
+    query,
+  )
     .filter()
     .sort()
     .paginate()
@@ -409,6 +416,7 @@ const updateOfferedSubjectIntoDB = async (
   const assignedSchedules = await OfferedSubject.find({
     semesterRegistration,
     instructor,
+    _id: { $ne: id },
     days: { $in: days },
   }).select('days startTime endTime');
 

@@ -45,6 +45,7 @@ router.put(
   validateRequest(SubjectValidations.instructorsWithSubjectValidationSchema),
   SubjectControllers.assignInstructorsWithSubject
 );
+
 router.get(
   '/:subjectId/get-instructor',
   auth(
