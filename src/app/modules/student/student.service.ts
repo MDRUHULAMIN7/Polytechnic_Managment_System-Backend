@@ -66,7 +66,7 @@ const getAllStudentFromDB = async (query: Record<string, unknown>) => {
 //   return result;
   const studentQuery = new QueryBuilder(
     Student.find()
-      .populate('user', '_id id role email status')
+      .populate('user', '_id id role email status createdAt updatedAt')
       .populate('admissionSemester')
       .populate({
         path: 'academicDepartment',
@@ -93,15 +93,18 @@ const getAllStudentFromDB = async (query: Record<string, unknown>) => {
 
 
 
-const getSingleStudentFromDB = async(id:string)=>{
-    const result = await Student.findOne({id}).populate('user', '_id id role email status').populate({
-        path:'academicDepartment',
-        populate:{
-           path:'academicInstructor',  
-        }
-    }).populate('admissionSemester');
-    return result;
-}
+const getSingleStudentFromDB = async (id: string) => {
+  const result = await Student.findOne({ id })
+    .populate('user', '_id id role email status createdAt updatedAt')
+    .populate({
+      path: 'academicDepartment',
+      populate: {
+        path: 'academicInstructor',
+      },
+    })
+    .populate('admissionSemester');
+  return result;
+};
 
 
 const updateStudentIntoDB = async (id: string, payload: Partial<TStudent>) => {
