@@ -3,6 +3,7 @@ import type { TAcademicDepartment } from './academicDepartment.interface.js';
 import { AcademicDepartment } from './academicDepartment.model.js';
 import AppError from '../../errors/AppError.js';
 import { AcademicInstructor } from '../academicInstructor/academicInstructor.model.js';
+import QueryBuilder from '../../../builder/QueryBuilder.js';
 
 const createAcademicDepartmentIntoDB = async (payload: TAcademicDepartment) => {
   const normalizedName = payload.name.trim();
@@ -49,11 +50,39 @@ const createAcademicDepartmentIntoDB = async (payload: TAcademicDepartment) => {
   return populatedResult;
 };
 
-const getAllAcademicDepartmentsFromDB = async () => {
-  const result = await AcademicDepartment.find()
-    .populate('academicInstructor')
-    .sort('name');
-  return result;
+const getAllAcademicDepartmentsFromDB = async (query: Record<string, unknown>) => {
+  const normalizedQuery: Record<string, unknown> = { ...query };
+  const startsWith = normalizedQuery.startsWith;
+
+  if (startsWith === 'a-m') {
+    normalizedQuery.name = { $regex: '^[A-M]', $options: 'i' };
+  } else if (startsWith === 'n-z') {
+    normalizedQuery.name = { $regex: '^[N-Z]', $options: 'i' };
+  }
+
+  delete normalizedQuery.startsWith;
+
+  if (normalizedQuery.academicInstructor === '') {
+    delete normalizedQuery.academicInstructor;
+  }
+
+  const academicDepartmentQuery = new QueryBuilder(
+    AcademicDepartment.find().populate('academicInstructor'),
+    normalizedQuery,
+  )
+    .search(['name'])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const result = await academicDepartmentQuery.modelQuery;
+  const meta = await academicDepartmentQuery.countTotal();
+
+  return {
+    meta,
+    result,
+  };
 };
 
 const getSingleAcademicDepartmentFromDB = async (id: string) => {

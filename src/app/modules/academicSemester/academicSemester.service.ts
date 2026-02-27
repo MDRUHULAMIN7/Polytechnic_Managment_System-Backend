@@ -3,6 +3,7 @@ import AppError from '../../errors/AppError.js';
 import { academicSemesterNameCodeMapper } from './academicSemester.constant.js';
 import type { TAcademicSemester } from './academicSemester.interface.js';
 import { AcademicSemester } from './academicSemesterModel.js';
+import QueryBuilder from '../../../builder/QueryBuilder.js';
 
 const createAcademicSemesterIntoDB = async (payload: TAcademicSemester) => {
   const normalizedYear = payload.year.trim();
@@ -34,9 +35,30 @@ const createAcademicSemesterIntoDB = async (payload: TAcademicSemester) => {
   return result;
 };
 
-const getAllAcademicSemesterFromDB = async () => {
-  const result = await AcademicSemester.find().sort('-year code');
-  return result;
+const getAllAcademicSemesterFromDB = async (query: Record<string, unknown>) => {
+  const normalizedQuery: Record<string, unknown> = { ...query };
+
+  if (normalizedQuery.name === '') {
+    delete normalizedQuery.name;
+  }
+
+  const academicSemesterQuery = new QueryBuilder(
+    AcademicSemester.find(),
+    normalizedQuery,
+  )
+    .search(['name', 'code', 'year', 'startMonth', 'endMonth'])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const result = await academicSemesterQuery.modelQuery;
+  const meta = await academicSemesterQuery.countTotal();
+
+  return {
+    meta,
+    result,
+  };
 };
 
 const getSingleAcademicSemesterFromDB = async (_id: string) => {

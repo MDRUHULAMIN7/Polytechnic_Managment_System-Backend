@@ -357,19 +357,36 @@ const getMyOfferedSubjectFromDB = async (
 };
 
 const getSingleOfferedSubjectFromDB = async (id: string) => {
-  const offeredSubject = await OfferedSubject.findById(id)
-  .populate('semesterRegistration')
-  .populate('academicSemester')
-  .populate('academicInstructor')
-  .populate('academicDepartment')
-  .populate('subject')
-  .populate('instructor');
+  const offeredSubject = await OfferedSubject.findById(id);
 
   if (!offeredSubject) {
     throw new AppError(404, 'Offered Subject not found');
   }
 
-  return offeredSubject;
+  if (!offeredSubject.semesterRegistration && offeredSubject.academicSemester) {
+    const registrations = await SemesterRegistration.find({
+      academicSemester: offeredSubject.academicSemester,
+      status: { $in: ['ONGOING', 'UPCOMING'] },
+    }).sort({ createdAt: -1 });
+
+    const preferred =
+      registrations.find((item) => item.status === 'ONGOING') ?? registrations[0];
+
+    if (preferred) {
+      offeredSubject.semesterRegistration = preferred._id;
+      await offeredSubject.save();
+    }
+  }
+
+  const populated = await OfferedSubject.findById(id)
+    .populate('semesterRegistration')
+    .populate('academicSemester')
+    .populate('academicInstructor')
+    .populate('academicDepartment')
+    .populate('subject')
+    .populate('instructor');
+
+  return populated;
 };
 
 const updateOfferedSubjectIntoDB = async (
