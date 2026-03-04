@@ -275,7 +275,11 @@ const getMyEnrolledSubjectsFromDB = async (userId: string) => {
   const result = await EnrolledSubject.find({
     student: student._id,
   })
-    .populate('semesterRegistration', 'academicSemester status shift startDate endDate')
+    .populate(
+      'semesterRegistration',
+      'academicSemester status shift startDate endDate totalCredit',
+    )
+    .populate('academicSemester', 'name year')
     .populate('offeredSubject', 'section days startTime endTime')
     .populate('subject', 'title code credits regulation')
     .populate('instructor', 'id name designation email')

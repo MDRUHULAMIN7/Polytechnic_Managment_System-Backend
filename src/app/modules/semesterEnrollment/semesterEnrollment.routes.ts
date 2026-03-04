@@ -23,8 +23,24 @@ router.get(
 );
 
 router.get(
+  '/:id',
+  auth(
+    USER_ROLE.admin,
+    USER_ROLE.superAdmin,
+    USER_ROLE.instructor,
+    USER_ROLE.student,
+  ),
+  SemesterEnrollmentControllers.getSingleSemesterEnrollment,
+);
+
+router.get(
   '/',
-  auth(USER_ROLE.admin, USER_ROLE.superAdmin, USER_ROLE.instructor),
+  auth(
+    USER_ROLE.admin,
+    USER_ROLE.superAdmin,
+    USER_ROLE.instructor,
+    USER_ROLE.student,
+  ),
   SemesterEnrollmentControllers.getAllSemesterEnrollments,
 );
 

@@ -9,6 +9,7 @@ import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
 import { Subject } from '../subject/subject.model.js';
 import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
 import { SemesterEnrollment } from './semesterEnrollment.model.js';
+import type { TUserRole } from '../user/user.interface.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
 
 const getMissingOfferedSubjectReasons = async ({
@@ -448,6 +449,71 @@ const getMySemesterEnrollmentsFromDB = async (userId: string) => {
   return result;
 };
 
+const getSemesterEnrollmentsForStudentFromDB = async (
+  userId: string,
+  query: Record<string, unknown>,
+) => {
+  const student = await Student.findOne({ id: userId }, { _id: 1 });
+
+  if (!student) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
+  }
+
+  const semesterEnrollmentQuery = new QueryBuilder(
+    SemesterEnrollment.find({ student: student._id })
+      .populate('student', 'id name')
+      .populate('curriculum', 'session regulation totalCredit')
+      .populate('semesterRegistration', 'status shift startDate endDate')
+      .populate('academicSemester', 'name year startMonth')
+      .populate('academicDepartment', 'name')
+      .lean(),
+    query,
+  )
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const result = await semesterEnrollmentQuery.modelQuery;
+  const meta = await semesterEnrollmentQuery.countTotal();
+
+  return {
+    meta,
+    result,
+  };
+};
+
+const getSingleSemesterEnrollmentFromDB = async (
+  id: string,
+  role: TUserRole,
+  userId: string,
+) => {
+  const query = SemesterEnrollment.findById(id)
+    .populate('student', 'id name')
+    .populate('curriculum', 'session regulation totalCredit')
+    .populate('semesterRegistration', 'status shift startDate endDate')
+    .populate('academicSemester', 'name year startMonth')
+    .populate('academicDepartment', 'name');
+
+  if (role === 'student') {
+    const student = await Student.findOne({ id: userId }, { _id: 1 });
+
+    if (!student) {
+      throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
+    }
+
+    query.where({ student: student._id });
+  }
+
+  const result = await query;
+
+  if (!result) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Semester enrollment not found !');
+  }
+
+  return result;
+};
+
 const getAllSemesterEnrollmentsFromDB = async (query: Record<string, unknown>) => {
   const semesterEnrollmentQuery = new QueryBuilder(
     SemesterEnrollment.find()
@@ -476,5 +542,7 @@ const getAllSemesterEnrollmentsFromDB = async (query: Record<string, unknown>) =
 export const SemesterEnrollmentServices = {
   createSemesterEnrollmentIntoDB,
   getMySemesterEnrollmentsFromDB,
+  getSemesterEnrollmentsForStudentFromDB,
+  getSingleSemesterEnrollmentFromDB,
   getAllSemesterEnrollmentsFromDB,
 };

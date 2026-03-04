@@ -11,6 +11,7 @@ import type {
   TCurriculum,
 } from './curriculum.interface.js';
 import { Curriculum } from './curriculum.model.js';
+import { Student } from '../student/student.model.js';
 
 const validateSemesterRegistrationForSemester = async (
   semisterRegistration: TCurriculum['semisterRegistration'],
@@ -116,10 +117,10 @@ const createCurriculumIntoDB = async (payload: TCreateCurriculumPayload) => {
     throw new AppError(StatusCodes.NOT_FOUND, 'Semester registration not found!');
   }
 
-  if (semesterRegistration.status !== 'UPCOMING') {
+  if (!['UPCOMING', 'ONGOING'].includes(semesterRegistration.status)) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      `Curriculum can be created only for UPCOMING semester registration! Current status is ${semesterRegistration.status}.`,
+      `Curriculum can be created only for UPCOMING or ONGOING semester registration! Current status is ${semesterRegistration.status}.`,
     );
   }
   const academicSemester = semesterRegistration.academicSemester;
@@ -175,8 +176,87 @@ const getAllCurriculumsFromDB = async (query: Record<string, unknown>) => {
   };
 };
 
+const getAllCurriculumsForStudentFromDB = async (
+  userId: string,
+  query: Record<string, unknown>,
+) => {
+  const student = await Student.findOne(
+    { id: userId },
+    { _id: 1, academicDepartment: 1 },
+  );
+
+  if (!student) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found!');
+  }
+
+  if (!student.academicDepartment) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Student academic department is missing!',
+    );
+  }
+
+  const curriculumQuery = new QueryBuilder(
+    Curriculum.find({ academicDepartment: student.academicDepartment })
+      .populate('academicDepartment')
+      .populate('academicSemester')
+      .populate('semisterRegistration')
+      .populate('subjects'),
+    query,
+  )
+    .search(curriculumSearchableFields)
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const result = await curriculumQuery.modelQuery;
+  const meta = await curriculumQuery.countTotal();
+
+  return {
+    meta,
+    result,
+  };
+};
+
 const getSingleCurriculumFromDB = async (id: string) => {
   const result = await Curriculum.findById(id)
+    .populate('academicDepartment')
+    .populate('academicSemester')
+    .populate('semisterRegistration')
+    .populate('subjects');
+
+  if (!result) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Curriculum not found!');
+  }
+
+  return result;
+};
+
+const getSingleCurriculumForStudentFromDB = async (
+  id: string,
+  userId: string,
+) => {
+  const student = await Student.findOne(
+    { id: userId },
+    { _id: 1, academicDepartment: 1 },
+  );
+
+  if (!student) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found!');
+  }
+
+  if (!student.academicDepartment) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Student academic department is missing!',
+    );
+  }
+
+  const result = await Curriculum.findOne({
+    _id: id,
+    academicDepartment: student.academicDepartment,
+  })
     .populate('academicDepartment')
     .populate('academicSemester')
     .populate('semisterRegistration')
@@ -308,7 +388,9 @@ const deleteCurriculumFromDB = async (id: string) => {
 export const CurriculumServices = {
   createCurriculumIntoDB,
   getAllCurriculumsFromDB,
+  getAllCurriculumsForStudentFromDB,
   getSingleCurriculumFromDB,
+  getSingleCurriculumForStudentFromDB,
   updateCurriculumIntoDB,
   deleteCurriculumFromDB,
 };
