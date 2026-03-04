@@ -139,8 +139,37 @@ const createSemesterRegistrationIntoDB = async (
 const getAllSemesterRegistrationsFromDB = async (
   query: Record<string, unknown>,
 ) => {
+  const searchTerm =
+    typeof query.searchTerm === 'string' ? query.searchTerm.trim() : '';
+
+  let baseQuery = SemesterRegistration.find();
+
+  if (searchTerm) {
+    const semesterMatches = await AcademicSemester.find({
+      $or: [
+        { name: { $regex: searchTerm, $options: 'i' } },
+        { year: { $regex: searchTerm, $options: 'i' } },
+        { startMonth: { $regex: searchTerm, $options: 'i' } },
+        { endMonth: { $regex: searchTerm, $options: 'i' } },
+      ],
+    }).select('_id');
+
+    const semesterIds = semesterMatches.map((item) => item._id);
+
+    const orConditions: Record<string, unknown>[] = [
+      { status: { $regex: searchTerm, $options: 'i' } },
+      { shift: { $regex: searchTerm, $options: 'i' } },
+    ];
+
+    if (semesterIds.length > 0) {
+      orConditions.push({ academicSemester: { $in: semesterIds } });
+    }
+
+    baseQuery = SemesterRegistration.find({ $or: orConditions });
+  }
+
   const semesterRegistrationQuery = new QueryBuilder(
-    SemesterRegistration.find().populate('academicSemester'),
+    baseQuery.populate('academicSemester'),
     query,
   )
     .filter()
