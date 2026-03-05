@@ -14,7 +14,7 @@ const defaultOrigins = [
   'http://localhost:3000',
   'https://polytechnic-managment-system-backen.vercel.app',
   'http://localhost:3001',
-  'http://127.0.0.1:3000',
+  'https://polytechnic-managment.vercel.app',
   'http://127.0.0.1:3001',
 ];
 
