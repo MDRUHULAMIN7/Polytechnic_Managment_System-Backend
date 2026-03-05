@@ -15,7 +15,6 @@ const defaultOrigins = [
   'https://polytechnic-managment-system-backen.vercel.app',
   'http://localhost:3001',
   'https://polytechnic-managment.vercel.app',
-  'http://127.0.0.1:3001',
 ];
 
 const envOrigins = (process.env.CORS_ORIGINS || '')
