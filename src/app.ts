@@ -13,7 +13,7 @@ const app: Application = express();
 const defaultOrigins = [
   'http://localhost:3000',
   'https://polytechnic-managment-system-backen.vercel.app',
-  'http://localhost:3001',
+  'http://localhost:3000',
   'https://polytechnic-managment.vercel.app',
 ];
 
