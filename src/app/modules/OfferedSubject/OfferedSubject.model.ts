@@ -40,7 +40,6 @@ const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
     },
     section: {
       type: Number,
-      unique:true,
       required: true,
     },
     days: [
@@ -62,6 +61,8 @@ const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
     timestamps: true,
   },
 );
+
+offeredSubjectSchema.index({ semesterRegistration: 1, subject: 1 }, { unique: true });
 
 export const OfferedSubject = mongoose.model<TOfferedSubject>(
   'OfferedSubject',

@@ -96,6 +96,18 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
     );
   }
 
+  // disallow offering same subject more than once in the same semester registration
+  const isSubjectAlreadyOfferedInRegistration = await OfferedSubject.findOne({
+    semesterRegistration,
+    subject,
+  });
+  if (isSubjectAlreadyOfferedInRegistration) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'This subject is already offered in this semester registration!',
+    );
+  }
+
   // check if the same offered Subject same section in same registered semester exists
 
   const isSameOfferedSubjectExistsWithSameRegisteredSemesterWithSameSection =
