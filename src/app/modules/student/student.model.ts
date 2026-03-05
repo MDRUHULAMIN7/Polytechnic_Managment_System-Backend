@@ -35,7 +35,7 @@ const userNameSchema = new Schema<TUserName>({
     required: [true, 'Last Name is Required'],
     validate: {
       validator: (value: string) => validator.isAlpha(value),
-      message: '{VALUE} is not valid',
+      message: '{VALUE} is not valid (use only alphabets and dont use space)',
     },
   },
 });

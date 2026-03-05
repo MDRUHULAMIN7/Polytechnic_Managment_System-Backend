@@ -22,8 +22,7 @@ const userNameZodValidationSchema = z.object({
     .string()
     .trim()
     .min(1, 'Last Name is Required')
-    .max(20, 'Last Name cannot be more than 20 characters')
-    .regex(/^[A-Za-z]+$/, 'Last Name must contain only letters'),
+    .max(20, 'Last Name cannot be more than 20 characters'),
 });
 
 const guardianZodValidationSchema = z.object({
