@@ -2,6 +2,7 @@ import { type UploadApiResponse, v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
+import os from 'os';
 import config from '../config/index.js';
 
 cloudinary.config({
@@ -39,7 +40,10 @@ export const sendImageToCloudinary = (
             const unlinkError = err as NodeJS.ErrnoException;
             // Ignore "already removed" temp file case.
             if (unlinkError.code !== 'ENOENT') {
-              console.error('Failed to delete temp upload file:', unlinkError.message);
+              console.error(
+                'Failed to delete temp upload file:',
+                unlinkError.message,
+              );
             }
           }
         });
@@ -50,7 +54,7 @@ export const sendImageToCloudinary = (
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = path.join(process.cwd(), 'uploads');
+    const uploadDir = path.join(os.tmpdir(), 'uploads');
     fs.mkdirSync(uploadDir, { recursive: true });
     cb(null, uploadDir);
   },
