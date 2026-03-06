@@ -13,6 +13,8 @@ import { AuthRoutes } from '../modules/Auth/auth.route.js';
 import { EnrolledSubjectRoutes } from '../modules/enrolledSubject/enrolledSubject.routes.js';
 import { CurriculumRoutes } from '../modules/curriculum/curriculum.routes.js';
 import { SemesterEnrollmentRoutes } from '../modules/semesterEnrollment/semesterEnrollment.routes.js';
+import { ClassSessionRoutes } from '../modules/classSession/classSession.route.js';
+import { StudentAttendanceRoutes } from '../modules/studentAttendance/studentAttendance.route.js';
 
 const router = Router();
 
@@ -72,6 +74,14 @@ const moduleRoutes = [
   {
     path: '/semester-enrollments',
     route: SemesterEnrollmentRoutes,
+  },
+  {
+    path: '/class-sessions',
+    route: ClassSessionRoutes,
+  },
+  {
+    path: '/student-attendance',
+    route: StudentAttendanceRoutes,
   },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

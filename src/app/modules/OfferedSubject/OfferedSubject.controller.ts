@@ -8,6 +8,16 @@ const createOfferedSubject = catchAsync(async (req, res) => {
   const result = await OfferedSubjectServices.createOfferedSubjectIntoDB(
     req.body,
   );
+
+  if (result?._id) {
+    const { ClassSessionServices } = await import(
+      '../classSession/classSession.service.js'
+    );
+    await ClassSessionServices.syncSingleOfferedSubjectClassSessionsIntoDB(
+      result._id.toString(),
+    );
+  }
+
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
@@ -68,6 +78,19 @@ const updateOfferedSubject = catchAsync(async (req, res) => {
     id,
     req.body,
   );
+
+  if (result?._id) {
+    const { ClassSessionServices } = await import(
+      '../classSession/classSession.service.js'
+    );
+    await ClassSessionServices.syncSingleOfferedSubjectClassSessionsIntoDB(
+      result._id.toString(),
+      {
+        replaceScheduled: true,
+      },
+    );
+  }
+
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
@@ -80,6 +103,15 @@ const deleteOfferedSubjectFromDB = catchAsync(
   async (req, res) => {
     const { id } = req.params;
     const result = await OfferedSubjectServices.deleteOfferedSubjectFromDB(id);
+
+    if (result?._id) {
+      const { ClassSession } = await import('../classSession/classSession.model.js');
+      await ClassSession.deleteMany({
+        offeredSubject: result._id,
+        status: { $in: ['SCHEDULED', 'MISSED', 'CANCELLED'] },
+      });
+    }
+
     sendResponse(res, {
       statusCode: StatusCodes.OK,
       success: true,
