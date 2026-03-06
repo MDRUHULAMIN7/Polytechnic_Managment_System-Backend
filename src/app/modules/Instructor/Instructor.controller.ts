@@ -27,6 +27,32 @@ const getAllInstructors = catchAsync(async (req, res) => {
   });
 });
 
+const getInstructorSummary = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await InstructorServices.getInstructorSummaryFromDB(id);
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Instructor summary is retrieved succesfully',
+    data: result,
+  });
+});
+
+const getAssignedSubjectsForInstructor = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await InstructorServices.getAssignedSubjectsForInstructorFromDB(
+    id,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Assigned subjects are retrieved succesfully',
+    data: result,
+  });
+});
+
 const updateInstructor = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { Instructor } = req.body;
@@ -55,6 +81,8 @@ const deleteInstructor = catchAsync(async (req, res) => {
 export const InstructorControllers = {
   getAllInstructors,
   getSingleInstructor,
+  getInstructorSummary,
+  getAssignedSubjectsForInstructor,
   deleteInstructor,
   updateInstructor,
 };

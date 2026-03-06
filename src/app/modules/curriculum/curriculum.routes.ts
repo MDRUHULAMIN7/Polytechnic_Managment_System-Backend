@@ -16,12 +16,6 @@ router.post(
 
 router.get(
   '/:id',
-  auth(
-    USER_ROLE.admin,
-    USER_ROLE.instructor,
-    USER_ROLE.student,
-    USER_ROLE.superAdmin,
-  ),
   CurriculumControllers.getSingleCurriculum,
 );
 
@@ -40,14 +34,7 @@ router.delete(
 
 router.get(
   '/',
-  auth(
-    USER_ROLE.admin,
-    USER_ROLE.instructor,
-    USER_ROLE.student,
-    USER_ROLE.superAdmin,
-  ),
   CurriculumControllers.getAllCurriculums,
 );
 
 export const CurriculumRoutes = router;
-

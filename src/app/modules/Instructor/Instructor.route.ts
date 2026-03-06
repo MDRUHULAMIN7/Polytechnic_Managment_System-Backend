@@ -8,6 +8,18 @@ import { USER_ROLE } from '../user/user.constant.js';
 const router = express.Router();
 
 router.get(
+  '/:id/summary',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  InstructorControllers.getInstructorSummary,
+);
+
+router.get(
+  '/:id/assigned-subjects',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  InstructorControllers.getAssignedSubjectsForInstructor,
+);
+
+router.get(
   '/:id',
   auth(USER_ROLE.admin, USER_ROLE.superAdmin),
   InstructorControllers.getSingleInstructor,

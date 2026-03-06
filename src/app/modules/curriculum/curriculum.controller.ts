@@ -15,11 +15,11 @@ const createCurriculum = catchAsync(async (req, res) => {
 });
 
 const getAllCurriculums = catchAsync(async (req, res) => {
-  const { role, userId } = req.user;
+  const { role, userId } = req.user ?? {};
   const result =
-    role === 'student'
+    role === 'student' && userId
       ? await CurriculumServices.getAllCurriculumsForStudentFromDB(
-          userId,
+          userId as string,
           req.query,
         )
       : await CurriculumServices.getAllCurriculumsFromDB(req.query);
@@ -34,10 +34,13 @@ const getAllCurriculums = catchAsync(async (req, res) => {
 
 const getSingleCurriculum = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const { role, userId } = req.user;
+  const { role, userId } = req.user ?? {};
   const result =
-    role === 'student'
-      ? await CurriculumServices.getSingleCurriculumForStudentFromDB(id, userId)
+    role === 'student' && userId
+      ? await CurriculumServices.getSingleCurriculumForStudentFromDB(
+          id,
+          userId as string,
+        )
       : await CurriculumServices.getSingleCurriculumFromDB(id);
 
   sendResponse(res, {

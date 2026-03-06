@@ -11,6 +11,7 @@ router.get(
   auth(
     USER_ROLE.admin,
     USER_ROLE.instructor,
+    USER_ROLE.student,
     USER_ROLE.superAdmin,
   ),
   OfferedSubjectControllers.getAllOfferedSubjects,

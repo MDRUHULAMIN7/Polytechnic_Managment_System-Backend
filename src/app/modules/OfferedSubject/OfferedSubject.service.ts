@@ -168,6 +168,11 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
 const getAllOfferedSubjectsFromDB = async (query: Record<string, unknown>) => {
   const offeredSubjectQuery = new QueryBuilder(
     OfferedSubject.find()
+      .populate({
+        path: 'semesterRegistration',
+        select: 'status shift startDate endDate academicSemester',
+        populate: { path: 'academicSemester', select: 'name year' },
+      })
       .populate('academicSemester', 'name year')
       .populate('academicDepartment', 'name')
       .populate('subject', 'title')
@@ -350,6 +355,34 @@ const getMyOfferedSubjectFromDB = async (
       $match: {
         isAlreadyEnrolled: false,
         isPreRequisitesFulFilled: true,
+      },
+    },
+    {
+      $lookup: {
+        from: 'semesterregistrations',
+        localField: 'semesterRegistration',
+        foreignField: '_id',
+        as: 'semesterRegistration',
+      },
+    },
+    {
+      $unwind: {
+        path: '$semesterRegistration',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $lookup: {
+        from: 'academicsemesters',
+        localField: 'academicSemester',
+        foreignField: '_id',
+        as: 'academicSemester',
+      },
+    },
+    {
+      $unwind: {
+        path: '$academicSemester',
+        preserveNullAndEmptyArrays: true,
       },
     },
   ];

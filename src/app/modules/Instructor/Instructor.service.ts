@@ -6,6 +6,7 @@ import { Instructor } from "./Instructor.model.js";
 import AppError from "../../errors/AppError.js";
 import { StatusCodes } from "http-status-codes";
 import { User } from "../user/user.model.js";
+import { SubjectInstructor } from "../subject/subject.model.js";
 
 
 const getAllInstructorsFromDB = async (query: Record<string, unknown>) => {
@@ -30,9 +31,35 @@ const getAllInstructorsFromDB = async (query: Record<string, unknown>) => {
 };
 
 const getSingleInstructorFromDB = async (id: string) => {
-  const result = await Instructor.findById(id).populate('academicDepartment').populate('user');
+  const result = await Instructor.findById(id)
+    .populate('academicDepartment')
+    .populate('user');
 
   return result;
+};
+
+const getInstructorSummaryFromDB = async (id: string) => {
+  const result = await Instructor.findById(id)
+    .select('id name designation email profileImg academicDepartment user')
+    .populate('academicDepartment')
+    .populate('user', '_id id role email status');
+
+  return result;
+};
+
+const getAssignedSubjectsForInstructorFromDB = async (instructorId: string) => {
+  const assignments = await SubjectInstructor.find({
+    instructors: instructorId,
+  }).populate('subject');
+
+  const subjects = assignments
+    .map((item) => item.subject)
+    .filter(
+      (subject): subject is NonNullable<typeof subject> =>
+        Boolean(subject) && (subject as { isDeleted?: boolean }).isDeleted !== true,
+    );
+
+  return subjects;
 };
 
 const updateInstructorIntoDB = async (id: string, payload: Partial<TInstructor>) => {
@@ -98,6 +125,8 @@ const deleteInstructorFromDB = async (id: string) => {
 export const InstructorServices = {
   getAllInstructorsFromDB,
   getSingleInstructorFromDB,
+  getInstructorSummaryFromDB,
+  getAssignedSubjectsForInstructorFromDB,
   updateInstructorIntoDB,
   deleteInstructorFromDB,
 };
