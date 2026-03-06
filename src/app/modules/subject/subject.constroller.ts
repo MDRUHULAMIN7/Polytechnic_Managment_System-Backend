@@ -17,7 +17,11 @@ const createSubject = catchAsync(async (req, res) => {
 
 // Get All Subjects
 const getAllSubjects = catchAsync(async (req, res) => {
-  const result = await SubjectServices.getAllSubjectsFromDB(req.query);
+  const result = await SubjectServices.getAllSubjectsFromDB(
+    req.query,
+    req.user.userId,
+    req.user.role,
+  );
 
   sendResponse(res, {
     statusCode:StatusCodes.OK,

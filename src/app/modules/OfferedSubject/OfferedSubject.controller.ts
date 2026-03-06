@@ -19,6 +19,8 @@ const createOfferedSubject = catchAsync(async (req, res) => {
 const getAllOfferedSubjects = catchAsync(async (req, res) => {
   const result = await OfferedSubjectServices.getAllOfferedSubjectsFromDB(
     req.query,
+    req.user.userId,
+    req.user.role,
   );
 
   sendResponse(res, {

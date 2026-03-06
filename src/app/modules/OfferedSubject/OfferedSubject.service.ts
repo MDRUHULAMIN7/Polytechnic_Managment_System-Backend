@@ -10,6 +10,17 @@ import { OfferedSubject } from "./OfferedSubject.model.js";
 import { hasTimeConflict } from "./OfferedSubject.utils.js";
 import QueryBuilder from "../../../builder/QueryBuilder.js";
 import { Student } from "../student/student.model.js";
+import type { TUserRole } from "../user/user.interface.js";
+
+const resolveInstructorIdFromUserId = async (userId: string) => {
+  const instructor = await Instructor.findOne({ id: userId }).select("_id");
+
+  if (!instructor) {
+    throw new AppError(StatusCodes.NOT_FOUND, "Instructor not found !");
+  }
+
+  return instructor._id;
+};
 
 
 const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
@@ -165,7 +176,18 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
   return result;
 };
 
-const getAllOfferedSubjectsFromDB = async (query: Record<string, unknown>) => {
+const getAllOfferedSubjectsFromDB = async (
+  query: Record<string, unknown>,
+  userId?: string,
+  role?: TUserRole,
+) => {
+  const queryObj = { ...query };
+
+  if (queryObj.scope === "my" && role === "instructor" && userId) {
+    const instructorId = await resolveInstructorIdFromUserId(userId);
+    queryObj.instructor = instructorId.toString();
+  }
+
   const offeredSubjectQuery = new QueryBuilder(
     OfferedSubject.find()
       .populate({
@@ -177,7 +199,7 @@ const getAllOfferedSubjectsFromDB = async (query: Record<string, unknown>) => {
       .populate('academicDepartment', 'name')
       .populate('subject', 'title')
       .populate('instructor', 'id name designation'),
-    query,
+    queryObj,
   )
     .filter()
     .sort()

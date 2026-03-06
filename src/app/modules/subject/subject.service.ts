@@ -6,6 +6,17 @@ import QueryBuilder from '../../../builder/QueryBuilder.js';
 import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
 import { Instructor } from '../Instructor/Instructor.model.js';
+import type { TUserRole } from '../user/user.interface.js';
+
+const resolveInstructorIdFromUserId = async (userId: string) => {
+  const instructor = await Instructor.findOne({ id: userId }).select('_id');
+
+  if (!instructor) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found!');
+  }
+
+  return instructor._id;
+};
 
 // Create Subject
 const createSubjectIntoDB = async (payload: TSubject) => {
@@ -14,10 +25,15 @@ const createSubjectIntoDB = async (payload: TSubject) => {
 };
 
 // Get All Subjects
-const getAllSubjectsFromDB = async (query: Record<string, unknown>) => {
+const getAllSubjectsFromDB = async (
+  query: Record<string, unknown>,
+  userId?: string,
+  role?: TUserRole,
+) => {
   const searchTerm = typeof query.searchTerm === 'string' ? query.searchTerm.trim() : '';
   const searchConditions: Record<string, unknown>[] = [];
   const notDeletedCondition = { isDeleted: { $ne: true } };
+  const queryObj = { ...query };
 
   if (searchTerm) {
     searchConditions.push(
@@ -31,11 +47,23 @@ const getAllSubjectsFromDB = async (query: Record<string, unknown>) => {
     }
   }
 
-  const subjectQuery = new QueryBuilder(
+  const baseCriteria: Record<string, unknown> =
     searchConditions.length > 0
-      ? Subject.find({ ...notDeletedCondition, $or: searchConditions })
-      : Subject.find(notDeletedCondition),
-    query,
+      ? { ...notDeletedCondition, $or: searchConditions }
+      : { ...notDeletedCondition };
+
+  if (queryObj.scope === 'my' && role === 'instructor' && userId) {
+    const instructorId = await resolveInstructorIdFromUserId(userId);
+    const assignedSubjectIds = await SubjectInstructor.find({
+      instructors: instructorId,
+    }).distinct('subject');
+
+    baseCriteria._id = { $in: assignedSubjectIds };
+  }
+
+  const subjectQuery = new QueryBuilder(
+    Subject.find(baseCriteria),
+    queryObj,
   )
     .filter()
     .sort()
