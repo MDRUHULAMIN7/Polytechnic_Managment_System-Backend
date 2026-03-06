@@ -144,6 +144,20 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
     );
   }
 
+  // check if the semester registration has any class at that time (same semester + department)
+  const sectionSchedules = await OfferedSubject.find({
+    semesterRegistration,
+    academicDepartment,
+    days: { $in: days },
+  }).select('days startTime endTime');
+
+  if (hasTimeConflict(sectionSchedules, newSchedule)) {
+    throw new AppError(
+      StatusCodes.CONFLICT,
+      `This semester registration already has a class at that time! Choose other time or day`,
+    );
+  }
+
   const result = await OfferedSubject.create({
     ...payload,
     academicSemester,
@@ -459,6 +473,21 @@ const updateOfferedSubjectIntoDB = async (
     throw new AppError(
       StatusCodes.CONFLICT,
       `This Instructor is not available at that time ! Choose other time or day`,
+    );
+  }
+
+  // check if the semester registration has any class at that time (same semester + department)
+  const sectionSchedules = await OfferedSubject.find({
+    semesterRegistration,
+    academicDepartment: isOfferedSubjectExists.academicDepartment,
+    _id: { $ne: id },
+    days: { $in: days },
+  }).select('days startTime endTime');
+
+  if (hasTimeConflict(sectionSchedules, newSchedule)) {
+    throw new AppError(
+      StatusCodes.CONFLICT,
+      `This semester registration already has a class at that time! Choose other time or day`,
     );
   }
 
