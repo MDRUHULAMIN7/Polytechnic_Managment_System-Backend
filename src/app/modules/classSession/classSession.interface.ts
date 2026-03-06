@@ -43,3 +43,24 @@ export type TSyncClassSessionResult = {
   skippedCount: number;
   totalStudents: number;
 };
+export type TPopulatedStudent = {
+  _id: { toString(): string };
+  id: string;
+  name: unknown;
+  email: string;
+  contactNo: string;
+};
+
+export type TFilterOption = {
+  value: string;
+  label: string;
+};
+
+export type TSemesterRegistrationOptionSource = {
+  _id: { toString(): string };
+  status?: string;
+  shift?: string;
+  startDate?: Date | string | null;
+  endDate?: Date | string | null;
+  academicSemester?: { name?: string; year?: string } | string | null;
+};

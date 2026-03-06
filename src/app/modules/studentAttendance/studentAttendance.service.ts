@@ -1,32 +1,12 @@
 import mongoose, { type PipelineStage } from 'mongoose';
 import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
-import { Instructor } from '../Instructor/Instructor.model.js';
-import { Student } from '../student/student.model.js';
 import { ClassSession } from '../classSession/classSession.model.js';
 import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
 import { StudentAttendance } from './studentAttendance.model.js';
 import { ClassSessionServices } from '../classSession/classSession.service.js';
+import { resolveInstructorIdFromUserId, resolveStudentIdFromUserId } from '../classSession/classSession.utils.js';
 
-const resolveInstructorIdFromUserId = async (userId: string) => {
-  const instructor = await Instructor.findOne({ id: userId }).select('_id');
-
-  if (!instructor) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found !');
-  }
-
-  return instructor._id;
-};
-
-const resolveStudentIdFromUserId = async (userId: string) => {
-  const student = await Student.findOne({ id: userId }).select('_id');
-
-  if (!student) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
-  }
-
-  return student._id;
-};
 
 const submitStudentAttendanceIntoDB = async (
   userId: string,

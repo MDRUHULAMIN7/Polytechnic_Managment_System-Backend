@@ -18,6 +18,17 @@ router.get(
   ClassSessionControllers.getRoleDashboardSummary,
 );
 
+router.get(
+  '/filter-options',
+  auth(
+    USER_ROLE.admin,
+    USER_ROLE.superAdmin,
+    USER_ROLE.instructor,
+    USER_ROLE.student,
+  ),
+  ClassSessionControllers.getClassSessionFilterOptions,
+);
+
 router.post(
   '/sync',
   auth(USER_ROLE.admin, USER_ROLE.superAdmin),
@@ -48,6 +59,12 @@ router.patch(
   auth(USER_ROLE.instructor),
   validateRequest(ClassSessionValidations.startClassSessionValidationSchema),
   ClassSessionControllers.startClassSession,
+);
+
+router.patch(
+  '/:id/complete',
+  auth(USER_ROLE.instructor),
+  ClassSessionControllers.completeClassSession,
 );
 
 router.get(

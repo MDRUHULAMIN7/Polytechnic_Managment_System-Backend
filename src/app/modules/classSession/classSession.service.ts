@@ -1,139 +1,41 @@
 import { type ClientSession } from 'mongoose';
 import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
-import { Instructor } from '../Instructor/Instructor.model.js';
-import { Student } from '../student/student.model.js';
 import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
 import { Subject } from '../subject/subject.model.js';
 import { ClassSession } from './classSession.model.js';
 import type {
-  TClassSession,
+  TFilterOption,
+  TPopulatedStudent,
+  TSemesterRegistrationOptionSource,
   TSyncClassSessionResult,
 } from './classSession.interface.js';
 import { StudentAttendance } from '../studentAttendance/studentAttendance.model.js';
 import {
+  buildClassSessionSeeds,
+  buildSemesterRegistrationOption,
+  buildSessionFilter,
+  buildSessionQuery,
+  buildSubjectOption,
+  countEnrolledStudentsForOfferedSubject,
   formatUtcDateKey,
-  getUtcDayLabel,
   normalizeUtcDate,
+  paginate,
+  resolveInstructorIdFromUserId,
+  resolveStudentIdFromUserId,
 } from './classSession.utils.js';
 
-type TPopulatedStudent = {
-  _id: { toString(): string };
-  id: string;
-  name: unknown;
-  email: string;
-  contactNo: string;
-};
 
-const resolveInstructorIdFromUserId = async (userId: string) => {
-  const instructor = await Instructor.findOne({ id: userId }).select('_id');
 
-  if (!instructor) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found !');
-  }
 
-  return instructor._id;
-};
 
-const resolveStudentIdFromUserId = async (userId: string) => {
-  const student = await Student.findOne({ id: userId }).select('_id');
 
-  if (!student) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
-  }
 
-  return student._id;
-};
 
-const paginate = (query: Record<string, unknown>) => {
-  const page = Number(query.page) || 1;
-  const limit = Number(query.limit) || 10;
-  const skip = (page - 1) * limit;
 
-  return {
-    page,
-    limit,
-    skip,
-  };
-};
-
-const buildSessionFilter = async (query: Record<string, unknown>) => {
-  const filter: Record<string, unknown> = {};
-
-  if (typeof query.status === 'string' && query.status.trim()) {
-    filter.status = query.status.trim();
-  }
-
-  if (typeof query.instructor === 'string' && query.instructor.trim()) {
-    filter.instructor = query.instructor.trim();
-  }
-
-  if (typeof query.subject === 'string' && query.subject.trim()) {
-    filter.subject = query.subject.trim();
-  }
-
-  if (typeof query.searchTerm === 'string' && query.searchTerm.trim()) {
-    const subjects = await Subject.find({
-      title: {
-        $regex: query.searchTerm.trim(),
-        $options: 'i',
-      },
-    }).select('_id');
-
-    const subjectIds = subjects.map((item) => item._id);
-    filter.subject = {
-      $in: subjectIds.length ? subjectIds : [],
-    };
-  }
-
-  if (
-    typeof query.academicDepartment === 'string' &&
-    query.academicDepartment.trim()
-  ) {
-    filter.academicDepartment = query.academicDepartment.trim();
-  }
-
-  if (typeof query.offeredSubject === 'string' && query.offeredSubject.trim()) {
-    filter.offeredSubject = query.offeredSubject.trim();
-  }
-
-  if (
-    typeof query.semesterRegistration === 'string' &&
-    query.semesterRegistration.trim()
-  ) {
-    filter.semesterRegistration = query.semesterRegistration.trim();
-  }
-
-  const range: Record<string, Date> = {};
-
-  if (typeof query.startDate === 'string' && query.startDate.trim()) {
-    range.$gte = normalizeUtcDate(query.startDate);
-  }
-
-  if (typeof query.endDate === 'string' && query.endDate.trim()) {
-    range.$lte = normalizeUtcDate(query.endDate);
-  }
-
-  if (Object.keys(range).length) {
-    filter.date = range;
-  }
-
-  return filter;
-};
-
-const buildSessionQuery = (filter: Record<string, unknown>) => {
-  return ClassSession.find(filter)
-    .populate('subject', 'title code')
-    .populate('instructor', 'id name designation')
-    .populate('academicDepartment', 'name')
-    .populate('semesterRegistration', 'status shift startDate endDate')
-    .populate('offeredSubject', 'section days startTime endTime')
-    .sort({ date: 1, startTime: 1 });
-};
-
-const ensureClassSessionsForOfferedSubjects = async (offeredSubjectIds: string[]) => {
+export const ensureClassSessionsForOfferedSubjects = async (offeredSubjectIds: string[]) => {
   if (!offeredSubjectIds.length) {
     return;
   }
@@ -153,77 +55,6 @@ const ensureClassSessionsForOfferedSubjects = async (offeredSubjectIds: string[]
   for (const offeredSubjectId of missingOfferedSubjectIds) {
     await syncSingleOfferedSubjectClassSessionsIntoDB(offeredSubjectId);
   }
-};
-
-const countEnrolledStudentsForOfferedSubject = async (offeredSubjectId: string) => {
-  return EnrolledSubject.countDocuments({
-    offeredSubject: offeredSubjectId,
-    isEnrolled: true,
-  });
-};
-
-const buildClassSessionSeeds = async (
-  offeredSubjectId: string,
-): Promise<Array<Partial<TClassSession>>> => {
-  const offeredSubject = await OfferedSubject.findById(offeredSubjectId);
-
-  if (!offeredSubject) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Offered Subject not found !');
-  }
-
-  const semesterRegistration = await SemesterRegistration.findById(
-    offeredSubject.semesterRegistration,
-  );
-
-  if (!semesterRegistration) {
-    throw new AppError(
-      StatusCodes.NOT_FOUND,
-      'Semester registration not found !',
-    );
-  }
-
-  const totalStudents = await countEnrolledStudentsForOfferedSubject(
-    offeredSubjectId,
-  );
-  const selectedDays = new Set(offeredSubject.days);
-  const startDate = normalizeUtcDate(semesterRegistration.startDate);
-  const endDate = normalizeUtcDate(semesterRegistration.endDate);
-  const sessions: Array<Partial<TClassSession>> = [];
-
-  let current = new Date(startDate);
-  let sessionNumber = 1;
-
-  while (current.getTime() <= endDate.getTime()) {
-    const day = getUtcDayLabel(current);
-
-    if (selectedDays.has(day)) {
-      sessions.push({
-        offeredSubject: offeredSubject._id,
-        semesterRegistration: offeredSubject.semesterRegistration,
-        academicSemester: offeredSubject.academicSemester,
-        academicDepartment: offeredSubject.academicDepartment,
-        subject: offeredSubject.subject,
-        instructor: offeredSubject.instructor,
-        sessionNumber,
-        date: new Date(current),
-        day,
-        startTime: offeredSubject.startTime,
-        endTime: offeredSubject.endTime,
-        totalStudents,
-        presentCount: 0,
-        absentCount: 0,
-        leaveCount: 0,
-        status: 'SCHEDULED',
-      });
-
-      sessionNumber += 1;
-    }
-
-    current = new Date(current);
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-
-  return sessions;
 };
 
 const syncSingleOfferedSubjectClassSessionsIntoDB = async (
@@ -346,6 +177,18 @@ const syncClassSessionsIntoDB = async (payload: {
 
 const getAllClassSessionsFromDB = async (query: Record<string, unknown>) => {
   const { page, limit, skip } = paginate(query);
+  if (
+    typeof query.semesterRegistration === 'string' &&
+    query.semesterRegistration.trim()
+  ) {
+    const offeredSubjectIds = (
+      await OfferedSubject.find({
+        semesterRegistration: query.semesterRegistration.trim(),
+      }).select('_id')
+    ).map((item) => item._id.toString());
+
+    await ensureClassSessionsForOfferedSubjects(offeredSubjectIds);
+  }
   const filter = await buildSessionFilter(query);
 
   const [result, total] = await Promise.all([
@@ -569,6 +412,41 @@ const startClassSessionIntoDB = async (
   return result;
 };
 
+const completeClassSessionIntoDB = async (
+  classSessionId: string,
+  userId: string,
+) => {
+  const classSession = await assertInstructorOwnsClassSession(
+    classSessionId,
+    userId,
+  );
+
+  if (classSession.status !== 'ONGOING') {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Class can not be completed because it is ${classSession.status}`,
+    );
+  }
+
+  const result = await ClassSession.findByIdAndUpdate(
+    classSessionId,
+    {
+      status: 'COMPLETED',
+      completedAt: new Date(),
+      instructorCheckOutTime: new Date(),
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  )
+    .populate('subject', 'title code')
+    .populate('instructor', 'id name designation')
+    .populate('offeredSubject', 'section days startTime endTime');
+
+  return result;
+};
+
 const getStudentClassSessionDetailsFromDB = async (
   classSessionId: string,
   userId: string,
@@ -773,6 +651,95 @@ const getRoleDashboardSummaryFromDB = async (
   };
 };
 
+const getClassSessionFilterOptionsFromDB = async (
+  userId: string,
+  role: string,
+  query: Record<string, unknown>,
+) => {
+  let semesterRegistrationIds: string[] = [];
+  let subjectIds: string[] = [];
+  let instructorId: string | null = null;
+  let studentId: string | null = null;
+
+  if (role === 'instructor') {
+    instructorId = (await resolveInstructorIdFromUserId(userId)).toString();
+    semesterRegistrationIds = (
+      await OfferedSubject.distinct('semesterRegistration', {
+        instructor: instructorId,
+      })
+    ).map((item) => item.toString());
+  } else if (role === 'student') {
+    studentId = (await resolveStudentIdFromUserId(userId)).toString();
+    semesterRegistrationIds = (
+      await EnrolledSubject.distinct('semesterRegistration', {
+        student: studentId,
+        isEnrolled: true,
+      })
+    ).map((item) => item.toString());
+  } else {
+    semesterRegistrationIds = (
+      await OfferedSubject.distinct('semesterRegistration')
+    ).map((item) => item.toString());
+  }
+
+  const semesters = (
+    await SemesterRegistration.find({
+      _id: { $in: semesterRegistrationIds },
+    })
+      .populate('academicSemester', 'name year')
+      .sort({ startDate: -1, createdAt: -1 })
+  )
+    .map((item) =>
+      buildSemesterRegistrationOption(
+        item as unknown as TSemesterRegistrationOptionSource,
+      ),
+    )
+    .filter(Boolean) as TFilterOption[];
+
+  if (typeof query.semesterRegistration === 'string' && query.semesterRegistration.trim()) {
+    const semesterRegistration = query.semesterRegistration.trim();
+
+    if (role === 'instructor' && instructorId) {
+      subjectIds = (
+        await OfferedSubject.distinct('subject', {
+          semesterRegistration,
+          instructor: instructorId,
+        })
+      ).map((item) => item.toString());
+    } else if (role === 'student' && studentId) {
+      subjectIds = (
+        await EnrolledSubject.distinct('subject', {
+          semesterRegistration,
+          student: studentId,
+          isEnrolled: true,
+        })
+      ).map((item) => item.toString());
+    } else {
+      subjectIds = (
+        await OfferedSubject.distinct('subject', {
+          semesterRegistration,
+        })
+      ).map((item) => item.toString());
+    }
+  }
+
+  const subjects = (
+    await Subject.find({
+      _id: { $in: subjectIds },
+      isDeleted: { $ne: true },
+    })
+      .select('title code')
+      .sort({ title: 1 })
+  )
+    .map((item) => buildSubjectOption(item))
+    .filter(Boolean) as TFilterOption[];
+
+  return {
+    semesters,
+    subjects,
+  };
+};
+
 const recalculateClassSessionAttendanceCounts = async (
   classSessionId: string,
   session?: ClientSession,
@@ -824,8 +791,10 @@ export const ClassSessionServices = {
   assertInstructorOwnsClassSession,
   getInstructorClassSessionDetailsFromDB,
   startClassSessionIntoDB,
+  completeClassSessionIntoDB,
   getStudentClassSessionDetailsFromDB,
   getSingleClassSessionFromDB,
   getRoleDashboardSummaryFromDB,
+  getClassSessionFilterOptionsFromDB,
   recalculateClassSessionAttendanceCounts,
 };

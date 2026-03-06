@@ -85,6 +85,20 @@ const startClassSession = catchAsync(async (req, res) => {
   });
 });
 
+const completeClassSession = catchAsync(async (req, res) => {
+  const result = await ClassSessionServices.completeClassSessionIntoDB(
+    req.params.id,
+    req.user.userId,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Class completed successfully',
+    data: result,
+  });
+});
+
 const getStudentClassSessionDetails = catchAsync(async (req, res) => {
   const result = await ClassSessionServices.getStudentClassSessionDetailsFromDB(
     req.params.id,
@@ -126,6 +140,21 @@ const getRoleDashboardSummary = catchAsync(async (req, res) => {
   });
 });
 
+const getClassSessionFilterOptions = catchAsync(async (req, res) => {
+  const result = await ClassSessionServices.getClassSessionFilterOptionsFromDB(
+    req.user.userId,
+    req.user.role,
+    req.query,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Class session filter options retrieved successfully',
+    data: result,
+  });
+});
+
 export const ClassSessionControllers = {
   syncClassSessions,
   getAllClassSessions,
@@ -133,7 +162,9 @@ export const ClassSessionControllers = {
   getStudentClassSessions,
   getInstructorClassSessionDetails,
   startClassSession,
+  completeClassSession,
   getStudentClassSessionDetails,
   getSingleClassSession,
   getRoleDashboardSummary,
+  getClassSessionFilterOptions,
 };
