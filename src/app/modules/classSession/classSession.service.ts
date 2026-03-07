@@ -5,6 +5,7 @@ import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
 import { Subject } from '../subject/subject.model.js';
+import { Curriculum } from '../curriculum/curriculum.model.js';
 import { ClassSession } from './classSession.model.js';
 import type {
   TFilterOption,
@@ -21,40 +22,36 @@ import {
   buildSubjectOption,
   countEnrolledStudentsForOfferedSubject,
   formatUtcDateKey,
+  getUtcDayLabel,
   normalizeUtcDate,
   paginate,
   resolveInstructorIdFromUserId,
   resolveStudentIdFromUserId,
 } from './classSession.utils.js';
 
-
-
-
-
-
-
-
-
-export const ensureClassSessionsForOfferedSubjects = async (offeredSubjectIds: string[]) => {
-  if (!offeredSubjectIds.length) {
-    return;
-  }
-
-  const existingSessions = await ClassSession.find({
-    offeredSubject: { $in: offeredSubjectIds },
-  }).select('offeredSubject');
-
-  const existingOfferedSubjectIds = new Set(
-    existingSessions.map((item) => item.offeredSubject.toString()),
+const getOfferedSubjectIdsForCurriculum = async (curriculumId: string) => {
+  const curriculum = await Curriculum.findById(curriculumId).select(
+    'academicDepartment academicSemester semisterRegistration subjects',
   );
 
-  const missingOfferedSubjectIds = offeredSubjectIds.filter(
-    (item) => !existingOfferedSubjectIds.has(item),
-  );
-
-  for (const offeredSubjectId of missingOfferedSubjectIds) {
-    await syncSingleOfferedSubjectClassSessionsIntoDB(offeredSubjectId);
+  if (!curriculum) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Curriculum not found !');
   }
+
+  const subjectIds = curriculum.subjects.map((subjectId) => subjectId.toString());
+
+  if (!subjectIds.length) {
+    return [];
+  }
+
+  const offeredSubjects = await OfferedSubject.find({
+    academicDepartment: curriculum.academicDepartment,
+    academicSemester: curriculum.academicSemester,
+    semesterRegistration: curriculum.semisterRegistration,
+    subject: { $in: subjectIds },
+  }).select('_id');
+
+  return offeredSubjects.map((item) => item._id.toString());
 };
 
 const syncSingleOfferedSubjectClassSessionsIntoDB = async (
@@ -151,13 +148,20 @@ const syncSingleOfferedSubjectClassSessionsIntoDB = async (
 
 const syncClassSessionsIntoDB = async (payload: {
   offeredSubjectId?: string;
+  curriculumId?: string;
   replaceScheduled?: boolean;
 }) => {
-  const offeredSubjectIds = payload.offeredSubjectId
-    ? [payload.offeredSubjectId]
-    : (
-        await OfferedSubject.find().select('_id')
-      ).map((item) => item._id.toString());
+  let offeredSubjectIds: string[] = [];
+
+  if (payload.offeredSubjectId) {
+    offeredSubjectIds = [payload.offeredSubjectId];
+  } else if (payload.curriculumId) {
+    offeredSubjectIds = await getOfferedSubjectIdsForCurriculum(payload.curriculumId);
+  } else {
+    offeredSubjectIds = (
+      await OfferedSubject.find().select('_id')
+    ).map((item) => item._id.toString());
+  }
 
   const result: TSyncClassSessionResult[] = [];
 
@@ -175,20 +179,30 @@ const syncClassSessionsIntoDB = async (payload: {
   };
 };
 
+const getCurriculumClassScheduleStatusFromDB = async (curriculumId: string) => {
+  const offeredSubjectIds = await getOfferedSubjectIdsForCurriculum(curriculumId);
+
+  if (!offeredSubjectIds.length) {
+    return {
+      hasSessions: false,
+      totalSessions: 0,
+      totalOfferedSubjects: 0,
+    };
+  }
+
+  const totalSessions = await ClassSession.countDocuments({
+    offeredSubject: { $in: offeredSubjectIds },
+  });
+
+  return {
+    hasSessions: totalSessions > 0,
+    totalSessions,
+    totalOfferedSubjects: offeredSubjectIds.length,
+  };
+};
+
 const getAllClassSessionsFromDB = async (query: Record<string, unknown>) => {
   const { page, limit, skip } = paginate(query);
-  if (
-    typeof query.semesterRegistration === 'string' &&
-    query.semesterRegistration.trim()
-  ) {
-    const offeredSubjectIds = (
-      await OfferedSubject.find({
-        semesterRegistration: query.semesterRegistration.trim(),
-      }).select('_id')
-    ).map((item) => item._id.toString());
-
-    await ensureClassSessionsForOfferedSubjects(offeredSubjectIds);
-  }
   const filter = await buildSessionFilter(query);
 
   const [result, total] = await Promise.all([
@@ -213,12 +227,6 @@ const getInstructorClassSessionsFromDB = async (
 ) => {
   const { page, limit, skip } = paginate(query);
   const instructorId = await resolveInstructorIdFromUserId(userId);
-  const offeredSubjectIds = (
-    await OfferedSubject.find({ instructor: instructorId }).select('_id')
-  ).map((item) => item._id.toString());
-
-  await ensureClassSessionsForOfferedSubjects(offeredSubjectIds);
-
   const filter = await buildSessionFilter(query);
   filter.instructor = instructorId;
   const [result, total] = await Promise.all([
@@ -249,9 +257,6 @@ const getStudentClassSessionsFromDB = async (
   }).select('offeredSubject');
 
   const offeredSubjectIds = enrolledSubjects.map((item) => item.offeredSubject);
-  await ensureClassSessionsForOfferedSubjects(
-    offeredSubjectIds.map((item) => item.toString()),
-  );
   const filter = await buildSessionFilter(query);
   filter.offeredSubject = { $in: offeredSubjectIds };
 
@@ -428,12 +433,119 @@ const completeClassSessionIntoDB = async (
     );
   }
 
+  const totalEnrolledStudents = await EnrolledSubject.countDocuments({
+    offeredSubject: classSession.offeredSubject,
+    isEnrolled: true,
+  });
+  const totalMarkedAttendance = await StudentAttendance.countDocuments({
+    classSession: classSession._id,
+  });
+
+  if (totalMarkedAttendance !== totalEnrolledStudents) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Attendance must be submitted for all enrolled students before completing the class.',
+    );
+  }
+
   const result = await ClassSession.findByIdAndUpdate(
     classSessionId,
     {
       status: 'COMPLETED',
       completedAt: new Date(),
       instructorCheckOutTime: new Date(),
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  )
+    .populate('subject', 'title code')
+    .populate('instructor', 'id name designation')
+    .populate('offeredSubject', 'section days startTime endTime');
+
+  return result;
+};
+
+const rescheduleClassSessionIntoDB = async (
+  classSessionId: string,
+  payload: {
+    date: string;
+    startTime: string;
+    endTime: string;
+  },
+) => {
+  const classSession = await ClassSession.findById(classSessionId);
+
+  if (!classSession) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Class session not found !');
+  }
+
+  if (['ONGOING', 'COMPLETED'].includes(classSession.status)) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Class can not be rescheduled because it is ${classSession.status}.`,
+    );
+  }
+
+  if (payload.startTime >= payload.endTime) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'End time must be later than start time.',
+    );
+  }
+
+  const nextDate = normalizeUtcDate(payload.date);
+
+  const result = await ClassSession.findByIdAndUpdate(
+    classSessionId,
+    {
+      date: nextDate,
+      day: getUtcDayLabel(nextDate),
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      status: 'SCHEDULED',
+      cancelledAt: undefined,
+      startedAt: undefined,
+      completedAt: undefined,
+      instructorCheckInTime: undefined,
+      instructorCheckOutTime: undefined,
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  )
+    .populate('subject', 'title code')
+    .populate('instructor', 'id name designation')
+    .populate('offeredSubject', 'section days startTime endTime');
+
+  return result;
+};
+
+const cancelClassSessionIntoDB = async (classSessionId: string) => {
+  const classSession = await ClassSession.findById(classSessionId);
+
+  if (!classSession) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Class session not found !');
+  }
+
+  if (classSession.status === 'CANCELLED') {
+    throw new AppError(StatusCodes.BAD_REQUEST, 'Class is already cancelled.');
+  }
+
+  if (['ONGOING', 'COMPLETED'].includes(classSession.status)) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Class can not be cancelled because it is ${classSession.status}.`,
+    );
+  }
+
+  const result = await ClassSession.findByIdAndUpdate(
+    classSessionId,
+    {
+      status: 'CANCELLED',
+      cancelledAt: new Date(),
     },
     {
       new: true,
@@ -571,12 +683,6 @@ const getRoleDashboardSummaryFromDB = async (
 
   if (role === 'instructor') {
     const instructorId = await resolveInstructorIdFromUserId(userId);
-    const offeredSubjectIds = (
-      await OfferedSubject.find({ instructor: instructorId }).select('_id')
-    ).map((item) => item._id.toString());
-
-    await ensureClassSessionsForOfferedSubjects(offeredSubjectIds);
-
     const sessions = await ClassSession.find({
       instructor: instructorId,
       date: {
@@ -601,10 +707,6 @@ const getRoleDashboardSummaryFromDB = async (
       isEnrolled: true,
     }).select('offeredSubject');
 
-    await ensureClassSessionsForOfferedSubjects(
-      enrolledSubjects.map((item) => item.offeredSubject.toString()),
-    );
-
     const sessions = await ClassSession.find({
       offeredSubject: { $in: enrolledSubjects.map((item) => item.offeredSubject) },
       date: {
@@ -624,11 +726,6 @@ const getRoleDashboardSummaryFromDB = async (
       sessions,
     };
   }
-
-  const offeredSubjectIds = (await OfferedSubject.find().select('_id')).map((item) =>
-    item._id.toString(),
-  );
-  await ensureClassSessionsForOfferedSubjects(offeredSubjectIds);
 
   const sessions = await ClassSession.find({
     date: {
@@ -770,11 +867,7 @@ const recalculateClassSessionAttendanceCounts = async (
 
   await ClassSession.findByIdAndUpdate(
     classSessionId,
-    {
-      ...stats,
-      status: 'COMPLETED',
-      completedAt: new Date(),
-    },
+    stats,
     {
       new: true,
       session,
@@ -784,6 +877,7 @@ const recalculateClassSessionAttendanceCounts = async (
 
 export const ClassSessionServices = {
   syncClassSessionsIntoDB,
+  getCurriculumClassScheduleStatusFromDB,
   syncSingleOfferedSubjectClassSessionsIntoDB,
   getAllClassSessionsFromDB,
   getInstructorClassSessionsFromDB,
@@ -792,6 +886,8 @@ export const ClassSessionServices = {
   getInstructorClassSessionDetailsFromDB,
   startClassSessionIntoDB,
   completeClassSessionIntoDB,
+  rescheduleClassSessionIntoDB,
+  cancelClassSessionIntoDB,
   getStudentClassSessionDetailsFromDB,
   getSingleClassSessionFromDB,
   getRoleDashboardSummaryFromDB,

@@ -121,7 +121,7 @@ const submitStudentAttendanceIntoDB = async (
 
     return {
       classSessionId: classSession._id,
-      status: updatedClassSession?.status ?? 'COMPLETED',
+      status: updatedClassSession?.status ?? classSession.status,
       totalMarked: payload.attendance.length,
       presentCount: updatedClassSession?.presentCount ?? 0,
       absentCount: updatedClassSession?.absentCount ?? 0,

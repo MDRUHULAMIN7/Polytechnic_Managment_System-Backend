@@ -309,7 +309,6 @@ const createSemesterEnrollmentIntoDB = async (
       academicDepartment: student.academicDepartment.toString(),
       academicInstructor: student.academicInstructor.toString(),
     });
-   console.log(reasonDetails)
     throw new AppError(
       StatusCodes.NOT_FOUND,
       `Some curriculum subjects can not be enrolled:\n${reasonDetails.join('\n')}`,

@@ -9,15 +9,6 @@ const createOfferedSubject = catchAsync(async (req, res) => {
     req.body,
   );
 
-  if (result?._id) {
-    const { ClassSessionServices } = await import(
-      '../classSession/classSession.service.js'
-    );
-    await ClassSessionServices.syncSingleOfferedSubjectClassSessionsIntoDB(
-      result._id.toString(),
-    );
-  }
-
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
@@ -78,18 +69,6 @@ const updateOfferedSubject = catchAsync(async (req, res) => {
     id,
     req.body,
   );
-
-  if (result?._id) {
-    const { ClassSessionServices } = await import(
-      '../classSession/classSession.service.js'
-    );
-    await ClassSessionServices.syncSingleOfferedSubjectClassSessionsIntoDB(
-      result._id.toString(),
-      {
-        replaceScheduled: true,
-      },
-    );
-  }
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,

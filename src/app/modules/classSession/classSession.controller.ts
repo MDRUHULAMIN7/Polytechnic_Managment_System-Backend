@@ -14,6 +14,19 @@ const syncClassSessions = catchAsync(async (req, res) => {
   });
 });
 
+const getCurriculumClassScheduleStatus = catchAsync(async (req, res) => {
+  const result = await ClassSessionServices.getCurriculumClassScheduleStatusFromDB(
+    req.params.curriculumId,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Curriculum class schedule status retrieved successfully',
+    data: result,
+  });
+});
+
 const getAllClassSessions = catchAsync(async (req, res) => {
   const result = await ClassSessionServices.getAllClassSessionsFromDB(req.query);
 
@@ -99,6 +112,33 @@ const completeClassSession = catchAsync(async (req, res) => {
   });
 });
 
+const rescheduleClassSession = catchAsync(async (req, res) => {
+  const result = await ClassSessionServices.rescheduleClassSessionIntoDB(
+    req.params.id,
+    req.body,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Class rescheduled successfully',
+    data: result,
+  });
+});
+
+const cancelClassSession = catchAsync(async (req, res) => {
+  const result = await ClassSessionServices.cancelClassSessionIntoDB(
+    req.params.id,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Class cancelled successfully',
+    data: result,
+  });
+});
+
 const getStudentClassSessionDetails = catchAsync(async (req, res) => {
   const result = await ClassSessionServices.getStudentClassSessionDetailsFromDB(
     req.params.id,
@@ -157,12 +197,15 @@ const getClassSessionFilterOptions = catchAsync(async (req, res) => {
 
 export const ClassSessionControllers = {
   syncClassSessions,
+  getCurriculumClassScheduleStatus,
   getAllClassSessions,
   getInstructorClassSessions,
   getStudentClassSessions,
   getInstructorClassSessionDetails,
   startClassSession,
   completeClassSession,
+  rescheduleClassSession,
+  cancelClassSession,
   getStudentClassSessionDetails,
   getSingleClassSession,
   getRoleDashboardSummary,

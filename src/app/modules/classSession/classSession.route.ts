@@ -37,6 +37,12 @@ router.post(
 );
 
 router.get(
+  '/curriculum/:curriculumId/status',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  ClassSessionControllers.getCurriculumClassScheduleStatus,
+);
+
+router.get(
   '/my',
   auth(USER_ROLE.instructor),
   ClassSessionControllers.getInstructorClassSessions,
@@ -65,6 +71,19 @@ router.patch(
   '/:id/complete',
   auth(USER_ROLE.instructor),
   ClassSessionControllers.completeClassSession,
+);
+
+router.patch(
+  '/:id/reschedule',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  validateRequest(ClassSessionValidations.rescheduleClassSessionValidationSchema),
+  ClassSessionControllers.rescheduleClassSession,
+);
+
+router.patch(
+  '/:id/cancel',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  ClassSessionControllers.cancelClassSession,
 );
 
 router.get(
