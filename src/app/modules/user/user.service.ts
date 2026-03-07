@@ -15,6 +15,149 @@ import { Admin } from "../admin/admin.model.js";
 import type { TAdmin } from "../admin/admin.interface.js";
 import { sendImageToCloudinary } from "../../utils/sendImageToCloudinary.js";
 
+type TEditableProfilePayload = {
+  name?: {
+    firstName?: string;
+    middleName?: string;
+    lastName?: string;
+  };
+  designation?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  contactNo?: string;
+  emergencyContactNo?: string;
+  bloodGroup?: string;
+  bloogGroup?: string;
+  presentAddress?: string;
+  permanentAddress?: string;
+  profileImg?: string;
+  guardian?: {
+    fatherName?: string;
+    fatherOccupation?: string;
+    fatherContactNo?: string;
+    motherName?: string;
+    motherOccupation?: string;
+    motherContactNo?: string;
+  };
+  localGuardian?: {
+    name?: string;
+    occupation?: string;
+    contactNo?: string;
+    address?: string;
+  };
+};
+
+function assignNestedFields(
+  target: Record<string, unknown>,
+  prefix: string,
+  value?: Record<string, unknown>,
+) {
+  if (!value || !Object.keys(value).length) {
+    return;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (nestedValue !== undefined) {
+      target[`${prefix}.${key}`] = nestedValue;
+    }
+  }
+}
+
+function hasEditableValues(value: Record<string, unknown>) {
+  return Object.keys(value).length > 0;
+}
+
+function buildStudentUpdatePayload(payload: TEditableProfilePayload) {
+  const updatePayload: Record<string, unknown> = {};
+
+  assignNestedFields(updatePayload, 'name', payload.name);
+  assignNestedFields(updatePayload, 'guardian', payload.guardian);
+  assignNestedFields(updatePayload, 'localGuardian', payload.localGuardian);
+
+  const directFields = [
+    'gender',
+    'dateOfBirth',
+    'contactNo',
+    'emergencyContactNo',
+    'presentAddress',
+    'permanentAddress',
+    'profileImg',
+  ] as const;
+
+  for (const field of directFields) {
+    if (payload[field] !== undefined) {
+      updatePayload[field] = payload[field];
+    }
+  }
+
+  const bloodGroup = payload.bloodGroup ?? payload.bloogGroup;
+  if (bloodGroup !== undefined) {
+    updatePayload.bloodGroup = bloodGroup;
+  }
+
+  return updatePayload;
+}
+
+function buildInstructorUpdatePayload(payload: TEditableProfilePayload) {
+  const updatePayload: Record<string, unknown> = {};
+
+  assignNestedFields(updatePayload, 'name', payload.name);
+
+  const directFields = [
+    'designation',
+    'gender',
+    'dateOfBirth',
+    'contactNo',
+    'emergencyContactNo',
+    'presentAddress',
+    'permanentAddress',
+    'profileImg',
+  ] as const;
+
+  for (const field of directFields) {
+    if (payload[field] !== undefined) {
+      updatePayload[field] = payload[field];
+    }
+  }
+
+  const bloodGroup = payload.bloogGroup ?? payload.bloodGroup;
+  if (bloodGroup !== undefined) {
+    updatePayload.bloogGroup = bloodGroup;
+  }
+
+  return updatePayload;
+}
+
+function buildAdminUpdatePayload(payload: TEditableProfilePayload) {
+  const updatePayload: Record<string, unknown> = {};
+
+  assignNestedFields(updatePayload, 'name', payload.name);
+
+  const directFields = [
+    'designation',
+    'gender',
+    'dateOfBirth',
+    'contactNo',
+    'emergencyContactNo',
+    'presentAddress',
+    'permanentAddress',
+    'profileImg',
+  ] as const;
+
+  for (const field of directFields) {
+    if (payload[field] !== undefined) {
+      updatePayload[field] = payload[field];
+    }
+  }
+
+  const bloodGroup = payload.bloogGroup ?? payload.bloodGroup;
+  if (bloodGroup !== undefined) {
+    updatePayload.bloogGroup = bloodGroup;
+  }
+
+  return updatePayload;
+}
+
 const createStudentIntoDB = async (
   passsword: string,
   payload: TStudent,
@@ -237,17 +380,97 @@ const createAdminIntoDB = async (password: string, payload: TAdmin,file?: { path
 const getMe = async (userId: string, role: string) => {
   let result = null;
   if (role === 'student') {
-    result = await Student.findOne({ id: userId }).populate('user');
+    result = await Student.findOne({ id: userId })
+      .populate('user')
+      .populate('admissionSemester', 'name year code startMonth endMonth')
+      .populate('academicDepartment', 'name')
+      .populate('academicInstructor', 'name');
   }
   if (role === 'admin') {
     result = await Admin.findOne({ id: userId }).populate('user');
   }
 
-  if (role === 'faculty') {
-    result = await Instructor.findOne({ id: userId }).populate('user');
+  if (role === 'instructor') {
+    result = await Instructor.findOne({ id: userId })
+      .populate('user')
+      .populate('academicDepartment', 'name')
+      .populate('academicInstructor', 'name');
+  }
+
+  if (role === 'superAdmin') {
+    result = await User.findOne({ id: userId });
   }
 
   return result;
+};
+
+const updateMe = async (
+  userId: string,
+  role: string,
+  payload: TEditableProfilePayload,
+) => {
+  let result = null;
+
+  if (role === 'student') {
+    const updatePayload = buildStudentUpdatePayload(payload);
+
+    if (!hasEditableValues(updatePayload)) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        'No editable profile fields were provided.',
+      );
+    }
+
+    result = await Student.findOneAndUpdate({ id: userId }, updatePayload, {
+      new: true,
+      runValidators: true,
+    });
+  }
+
+  if (role === 'instructor') {
+    const updatePayload = buildInstructorUpdatePayload(payload);
+
+    if (!hasEditableValues(updatePayload)) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        'No editable profile fields were provided.',
+      );
+    }
+
+    result = await Instructor.findOneAndUpdate({ id: userId }, updatePayload, {
+      new: true,
+      runValidators: true,
+    });
+  }
+
+  if (role === 'admin') {
+    const updatePayload = buildAdminUpdatePayload(payload);
+
+    if (!hasEditableValues(updatePayload)) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        'No editable profile fields were provided.',
+      );
+    }
+
+    result = await Admin.findOneAndUpdate({ id: userId }, updatePayload, {
+      new: true,
+      runValidators: true,
+    });
+  }
+
+  if (role === 'superAdmin') {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'This account does not have editable profile fields.',
+    );
+  }
+
+  if (!result) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Profile not found.');
+  }
+
+  return getMe(userId, role);
 };
 const changeStatus = async (id: string, payload: { status: string }) => {
   const result = await User.findByIdAndUpdate(id, payload, {
@@ -260,5 +483,6 @@ export const userServices = {
   createInstructorIntoDB,
   createAdminIntoDB,
   getMe,
+  updateMe,
   changeStatus
 };

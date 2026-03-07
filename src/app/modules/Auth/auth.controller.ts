@@ -61,7 +61,11 @@ const forgetPassword = catchAsync(async (req, res) => {
 });
 
 const resetPassword = catchAsync(async (req, res) => {
-  const token = req.headers.authorization;
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : authHeader;
+
   if (!token) {
     throw new AppError(StatusCodes.UNAUTHORIZED, 'Authorization token is required!');
   }

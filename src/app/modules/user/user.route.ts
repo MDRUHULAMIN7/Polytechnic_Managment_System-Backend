@@ -134,4 +134,16 @@ router.get(
   userControllers.getMe,
 );
 
+router.patch(
+  '/me',
+  auth(
+    USER_ROLE.admin,
+    USER_ROLE.instructor,
+    USER_ROLE.student,
+    USER_ROLE.superAdmin,
+  ),
+  validateRequest(UserValidation.selfUpdateProfileValidationSchema),
+  userControllers.updateMe,
+);
+
 export const UserRoutes = router;
