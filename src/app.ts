@@ -20,7 +20,6 @@ app.options('/{*splat}', cors(corsOptions));
 //application routes
 
 // app.use('/api/v1/students', StudentRoutes);
-// app.use('/api/v1/users', UserRoutes);
 
 //moved application routes in router folder to organize
 app.use('/api/v1', router);
