@@ -1,4 +1,4 @@
-import type { JwtPayload } from 'jsonwebtoken';
+import type { JwtPayload, SignOptions } from 'jsonwebtoken';
 import jwt from 'jsonwebtoken';
 import config from '../config/index.js';
 import catchAsync from '../utils/CatchAsync.js';
@@ -65,7 +65,7 @@ const optionalAuth = () => {
               role: user.role,
             },
             config.jwt_access_secret as string,
-            config.jwt_access_expires_in as jwt.SignOptions['expiresIn'],
+            config.jwt_access_expires_in as SignOptions['expiresIn'],
           );
 
           _res.cookie('pms_access_token', nextAccessToken, accessCookieOptions);
