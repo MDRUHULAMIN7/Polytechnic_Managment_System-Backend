@@ -14,7 +14,18 @@ export async function socketAuthMiddleware(
         ? socket.handshake.headers.authorization
         : undefined,
     );
-    const accessToken = authHeader || cookies.pms_access_token || null;
+    const authPayload =
+      typeof socket.handshake.auth === 'object' && socket.handshake.auth
+        ? socket.handshake.auth
+        : null;
+    const handshakeToken =
+      authPayload && typeof authPayload.accessToken === 'string'
+        ? authPayload.accessToken
+        : authPayload && typeof authPayload.token === 'string'
+          ? authPayload.token
+          : null;
+    const accessToken =
+      authHeader || readBearerToken(handshakeToken ?? undefined) || cookies.pms_access_token || null;
     const refreshToken = cookies.refreshToken || null;
     const { user } = await resolveSessionUser({
       accessToken,
