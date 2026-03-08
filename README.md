@@ -161,3 +161,60 @@ Specific classes available for registration.
 -   `/api/v1/semester-registrations` - Registration management
 -   `/api/v1/auth` - Authentication (Login/Refresh Token)
 
+## Render Deploy
+
+This backend uses `src/server.ts` to start the HTTP server and initialize
+Socket.IO. For production realtime notifications, deploy it as a persistent
+Node web service.
+
+### Included deploy files
+
+- Root blueprint: `../render.yaml`
+- Example env file: `.env.example`
+- Health check endpoint: `GET /health`
+
+### Render service settings
+
+If you configure Render manually, use:
+
+- Root directory: `backend`
+- Build command: `npm ci && npm run build`
+- Start command: `npm run start`
+- Health check path: `/health`
+
+### Required environment variables
+
+- `NODE_ENV=production`
+- `DATABASE_URL`
+- `BCRYPT_SALT_ROUNDS`
+- `DEFAULT_PASS`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `JWT_ACCESS_EXPIRES_IN`
+- `JWT_REFRESH_EXPIRES_IN`
+- `RESET_PASS_UI_LINK`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+- `SUPER_ADMIN_PASSWORD`
+- `CORS_ORIGINS`
+
+### Frontend environment after backend deploy
+
+If Render gives you a backend URL like `https://pms-backend.onrender.com`, set:
+
+- `NEXT_PUBLIC_API_BASE_URL=https://pms-backend.onrender.com/api/v1`
+- `NEXT_PUBLIC_SOCKET_URL=https://pms-backend.onrender.com`
+
+Set backend `CORS_ORIGINS` to include your frontend URL, for example:
+
+```env
+CORS_ORIGINS=https://your-frontend-domain.vercel.app,http://localhost:3000
+```
+
+Set `RESET_PASS_UI_LINK` to your deployed frontend reset page:
+
+```env
+RESET_PASS_UI_LINK=https://your-frontend-domain.vercel.app/reset-password
+```
+

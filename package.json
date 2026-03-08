@@ -9,6 +9,7 @@
     "lint:fix": "eslint src --fix",
     "prettier": "prettier --ignore-path .gitignore --write \"./src**/*.+(js|ts|json)\"",
     "prettier:fix": "npx prettier --write src",
+    "start": "node ./dist/server.js",
     "start:dev": "tsx watch src/server.ts",
     "start:prod": "node ./dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"

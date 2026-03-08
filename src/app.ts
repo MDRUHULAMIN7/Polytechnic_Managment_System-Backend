@@ -29,6 +29,12 @@ const getAController = (req: Request, res: Response) => {
 };
 
 app.get('/', getAController);
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: 'Backend is healthy',
+  });
+});
 //global error handeler
 
 app.use(globalErrorHandeler);
