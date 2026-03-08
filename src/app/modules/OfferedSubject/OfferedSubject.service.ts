@@ -651,6 +651,7 @@ const deleteOfferedSubjectFromDB = async (id: string) => {
    * Step 1: check if the offered Subject exists
    * Step 2: check if the semester registration status is upcoming
    * Step 3: delete the offered Subject
+   * 
    */
   const isOfferedSubjectExists = await OfferedSubject.findById(id);
 

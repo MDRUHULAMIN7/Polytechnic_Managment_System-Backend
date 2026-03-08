@@ -169,7 +169,7 @@ Node web service.
 
 ### Included deploy files
 
-- Root blueprint: `../render.yaml`
+- Blueprint: `render.yaml`
 - Example env file: `.env.example`
 - Health check endpoint: `GET /health`
 
