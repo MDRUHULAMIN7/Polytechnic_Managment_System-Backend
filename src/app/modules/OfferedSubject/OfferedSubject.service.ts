@@ -11,6 +11,7 @@ import { hasTimeConflict } from "./OfferedSubject.utils.js";
 import QueryBuilder from "../../../builder/QueryBuilder.js";
 import { Student } from "../student/student.model.js";
 import type { TUserRole } from "../user/user.interface.js";
+import { NotificationService } from "../notification/notification.service.js";
 
 const resolveInstructorIdFromUserId = async (userId: string) => {
   const instructor = await Instructor.findOne({ id: userId }).select("_id");
@@ -173,6 +174,36 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
     ...payload,
     academicSemester,
   });
+
+  const populatedResult = await OfferedSubject.findById(result._id)
+    .populate('subject', 'title code')
+    .populate({
+      path: 'semesterRegistration',
+      select: 'shift academicSemester',
+      populate: {
+        path: 'academicSemester',
+        select: 'name year',
+      },
+    })
+    .populate('instructor', 'id');
+
+  const instructorUserId =
+    populatedResult &&
+    populatedResult.instructor &&
+    typeof populatedResult.instructor === 'object' &&
+    'id' in populatedResult.instructor
+      ? String(populatedResult.instructor.id)
+      : null;
+
+  if (populatedResult && instructorUserId) {
+    void NotificationService.notifyOfferedSubjectAssigned({
+      instructorUserId,
+      offeredSubjectId: populatedResult._id.toString(),
+      subject: populatedResult.subject,
+      semesterRegistration: populatedResult.semesterRegistration,
+    });
+  }
+
   return result;
 };
 
@@ -489,6 +520,18 @@ const updateOfferedSubjectIntoDB = async (
     throw new AppError(StatusCodes.NOT_FOUND, 'Offered Subject not found !');
   }
 
+  const previousOfferedSubject = await OfferedSubject.findById(id)
+    .populate('subject', 'title code')
+    .populate({
+      path: 'semesterRegistration',
+      select: 'shift academicSemester',
+      populate: {
+        path: 'academicSemester',
+        select: 'name year',
+      },
+    })
+    .populate('instructor', 'id');
+
   const isInstructorExists = await Instructor.findById(instructor);
 
   if (!isInstructorExists) {
@@ -549,6 +592,57 @@ const updateOfferedSubjectIntoDB = async (
   const result = await OfferedSubject.findByIdAndUpdate(id, payload, {
     new: true,
   });
+
+  if (previousOfferedSubject && result) {
+    const previousInstructorId =
+      previousOfferedSubject.instructor &&
+      typeof previousOfferedSubject.instructor === 'object' &&
+      'id' in previousOfferedSubject.instructor
+        ? String(previousOfferedSubject.instructor.id)
+        : null;
+
+    const nextInstructor = await OfferedSubject.findById(result._id)
+      .populate('subject', 'title code')
+      .populate({
+        path: 'semesterRegistration',
+        select: 'shift academicSemester',
+        populate: {
+          path: 'academicSemester',
+          select: 'name year',
+        },
+      })
+      .populate('instructor', 'id');
+
+    const nextInstructorId =
+      nextInstructor &&
+      nextInstructor.instructor &&
+      typeof nextInstructor.instructor === 'object' &&
+      'id' in nextInstructor.instructor
+        ? String(nextInstructor.instructor.id)
+        : null;
+
+    if (
+      previousInstructorId &&
+      nextInstructor &&
+      nextInstructorId &&
+      previousInstructorId !== nextInstructorId
+    ) {
+      void NotificationService.notifyOfferedSubjectRemoved({
+        instructorUserId: previousInstructorId,
+        offeredSubjectId: previousOfferedSubject._id.toString(),
+        subject: previousOfferedSubject.subject,
+        semesterRegistration: previousOfferedSubject.semesterRegistration,
+      });
+
+      void NotificationService.notifyOfferedSubjectAssigned({
+        instructorUserId: nextInstructorId,
+        offeredSubjectId: nextInstructor._id.toString(),
+        subject: nextInstructor.subject,
+        semesterRegistration: nextInstructor.semesterRegistration,
+      });
+    }
+  }
+
   return result;
 };
 
@@ -576,7 +670,36 @@ const deleteOfferedSubjectFromDB = async (id: string) => {
     );
   }
 
+  const previousOfferedSubject = await OfferedSubject.findById(id)
+    .populate('subject', 'title code')
+    .populate({
+      path: 'semesterRegistration',
+      select: 'shift academicSemester',
+      populate: {
+        path: 'academicSemester',
+        select: 'name year',
+      },
+    })
+    .populate('instructor', 'id');
+
   const result = await OfferedSubject.findByIdAndDelete(id);
+
+  const instructorUserId =
+    previousOfferedSubject &&
+    previousOfferedSubject.instructor &&
+    typeof previousOfferedSubject.instructor === 'object' &&
+    'id' in previousOfferedSubject.instructor
+      ? String(previousOfferedSubject.instructor.id)
+      : null;
+
+  if (previousOfferedSubject && instructorUserId) {
+    void NotificationService.notifyOfferedSubjectRemoved({
+      instructorUserId,
+      offeredSubjectId: previousOfferedSubject._id.toString(),
+      subject: previousOfferedSubject.subject,
+      semesterRegistration: previousOfferedSubject.semesterRegistration,
+    });
+  }
 
   return result;
 };

@@ -16,6 +16,7 @@ import { SemesterEnrollmentRoutes } from '../modules/semesterEnrollment/semester
 import { ClassSessionRoutes } from '../modules/classSession/classSession.route.js';
 import { StudentAttendanceRoutes } from '../modules/studentAttendance/studentAttendance.route.js';
 import { NoticeRoutes } from '../modules/notice/notice.route.js';
+import { NotificationRoutes } from '../modules/notification/notification.route.js';
 
 const router = Router();
 
@@ -87,6 +88,10 @@ const moduleRoutes = [
   {
     path: '/notices',
     route: NoticeRoutes,
+  },
+  {
+    path: '/notifications',
+    route: NotificationRoutes,
   },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

@@ -14,6 +14,7 @@ import type {
   TSyncClassSessionResult,
 } from './classSession.interface.js';
 import { StudentAttendance } from '../studentAttendance/studentAttendance.model.js';
+import { NotificationService } from '../notification/notification.service.js';
 import {
   buildClassSessionSeeds,
   buildSemesterRegistrationOption,
@@ -28,6 +29,11 @@ import {
   resolveInstructorIdFromUserId,
   resolveStudentIdFromUserId,
 } from './classSession.utils.js';
+
+function logRealtimeError(action: string, error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`Realtime notification failed for ${action}: ${detail}\n`);
+}
 
 const getOfferedSubjectIdsForCurriculum = async (curriculumId: string) => {
   const curriculum = await Curriculum.findById(curriculumId).select(
@@ -414,6 +420,12 @@ const startClassSessionIntoDB = async (
     .populate('instructor', 'id name designation')
     .populate('offeredSubject', 'section days startTime endTime');
 
+  if (result) {
+    void NotificationService.notifyClassStarted(result).catch((error) =>
+      logRealtimeError('class start', error),
+    );
+  }
+
   return result;
 };
 
@@ -463,6 +475,12 @@ const completeClassSessionIntoDB = async (
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
     .populate('offeredSubject', 'section days startTime endTime');
+
+  if (result) {
+    void NotificationService.notifyClassCompleted(result).catch((error) =>
+      logRealtimeError('class completion', error),
+    );
+  }
 
   return result;
 };
@@ -519,6 +537,12 @@ const rescheduleClassSessionIntoDB = async (
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
     .populate('offeredSubject', 'section days startTime endTime');
+
+  if (result) {
+    void NotificationService.notifyClassCancelled(result).catch((error) =>
+      logRealtimeError('class cancellation', error),
+    );
+  }
 
   return result;
 };

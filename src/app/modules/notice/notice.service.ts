@@ -15,6 +15,7 @@ import {
   type TNoticeRecord,
   type TViewerRole,
 } from './notice.utils.js';
+import { NotificationService } from '../notification/notification.service.js';
 
 type TNoticeListResult = {
   meta: {
@@ -50,6 +51,16 @@ async function createNoticeIntoDBWithRole(
       StatusCodes.INTERNAL_SERVER_ERROR,
       'Failed to load created notice.',
     );
+  }
+
+  if (populatedResult.status === 'published') {
+    void NotificationService.notifyNoticePublished({
+      noticeId: populatedResult._id.toString(),
+      title: populatedResult.title,
+      targetAudience: populatedResult.targetAudience,
+      createdBy: userId,
+      priority: populatedResult.priority,
+    });
   }
 
   return populatedResult;
@@ -194,6 +205,20 @@ async function updateNoticeIntoDB(
       StatusCodes.INTERNAL_SERVER_ERROR,
       'Failed to update notice.',
     );
+  }
+
+  if (
+    updatedNotice.status === 'published' &&
+    (existingNotice.status !== 'published' ||
+      existingNotice.targetAudience !== updatedNotice.targetAudience)
+  ) {
+    void NotificationService.notifyNoticePublished({
+      noticeId: updatedNotice._id.toString(),
+      title: updatedNotice.title,
+      targetAudience: updatedNotice.targetAudience,
+      createdBy: requesterId,
+      priority: updatedNotice.priority,
+    });
   }
 
   return updatedNotice;

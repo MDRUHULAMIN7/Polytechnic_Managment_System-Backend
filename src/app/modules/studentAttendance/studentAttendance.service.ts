@@ -6,7 +6,13 @@ import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
 import { StudentAttendance } from './studentAttendance.model.js';
 import { ClassSessionServices } from '../classSession/classSession.service.js';
 import { resolveInstructorIdFromUserId, resolveStudentIdFromUserId } from '../classSession/classSession.utils.js';
+import { NotificationService } from '../notification/notification.service.js';
+import { Student } from '../student/student.model.js';
 
+function logRealtimeError(action: string, error: unknown) {
+  const detail = error instanceof Error ? error.message : String(error);
+  process.stderr.write(`Realtime notification failed for ${action}: ${detail}\n`);
+}
 
 const submitStudentAttendanceIntoDB = async (
   userId: string,
@@ -119,6 +125,34 @@ const submitStudentAttendanceIntoDB = async (
     await dbSession.commitTransaction();
     await dbSession.endSession();
 
+    if (updatedClassSession) {
+      const studentIds = await Student.find({
+        _id: {
+          $in: payload.attendance.map((row) => new mongoose.Types.ObjectId(row.studentId)),
+        },
+      }).select('id');
+
+      const userIdsByStudentId = new Map(
+        studentIds.map((student) => [student._id.toString(), student.id]),
+      );
+
+      void NotificationService.notifyAttendanceMarked({
+        classSession: updatedClassSession,
+        attendance: payload.attendance
+          .map((row) => ({
+            studentId: userIdsByStudentId.get(row.studentId) ?? '',
+            status: row.status,
+          }))
+          .filter((row) => row.studentId),
+        summary: {
+          totalMarked: payload.attendance.length,
+          presentCount: updatedClassSession.presentCount ?? 0,
+          absentCount: updatedClassSession.absentCount ?? 0,
+          leaveCount: updatedClassSession.leaveCount ?? 0,
+        },
+      }).catch((error) => logRealtimeError('attendance submission', error));
+    }
+
     return {
       classSessionId: classSession._id,
       status: updatedClassSession?.status ?? classSession.status,
@@ -184,6 +218,36 @@ const updateStudentAttendanceIntoDB = async (
   await ClassSessionServices.recalculateClassSessionAttendanceCounts(
     classSession._id.toString(),
   );
+
+  const refreshedClassSession = await ClassSession.findById(classSession._id)
+    .populate('subject', 'title code');
+
+  const student = result?.student as
+    | { id?: string }
+    | string
+    | null
+    | undefined;
+
+  const studentId =
+    typeof student === 'string' ? null : (student?.id ?? null);
+
+  if (refreshedClassSession && studentId && result) {
+    void NotificationService.notifyAttendanceMarked({
+      classSession: refreshedClassSession,
+      attendance: [
+        {
+          studentId,
+          status: result.status,
+        },
+      ],
+      summary: {
+        totalMarked: 1,
+        presentCount: refreshedClassSession.presentCount ?? 0,
+        absentCount: refreshedClassSession.absentCount ?? 0,
+        leaveCount: refreshedClassSession.leaveCount ?? 0,
+      },
+    }).catch((error) => logRealtimeError('attendance update', error));
+  }
 
   return result;
 };

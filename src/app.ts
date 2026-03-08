@@ -8,33 +8,8 @@ import globalErrorHandeler from './app/middleware/globalErrorHandeler.js';
 import notFound from './app/middleware/notFound.js';
 import router from './app/routes/index.js';
 import cookieParser from 'cookie-parser';
+import { corsOptions } from './app/config/cors.js';
 const app: Application = express();
-
-const defaultOrigins = [
-  'http://localhost:3000',
-  'https://polytechnic-managment-system-backen.vercel.app',
-  'http://localhost:3000',
-  'https://polytechnic-managment.vercel.app',
-];
-
-const envOrigins = (process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-const allowedOrigins = envOrigins.length ? envOrigins : defaultOrigins;
-
-const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-};
 
 //parser
 app.use(express.json());
@@ -55,13 +30,6 @@ const getAController = (req: Request, res: Response) => {
 };
 
 app.get('/', getAController);
-
-const test = async (req: Request, res: Response) => {
-  const a = 10;
-  res.send(a);
-};
-
-app.get('/', test);
 //global error handeler
 
 app.use(globalErrorHandeler);
