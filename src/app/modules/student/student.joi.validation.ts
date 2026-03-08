@@ -1,4 +1,4 @@
-import Joi from "Joi";
+import Joi from "joi";
 
    const capitalizeValidator = (value: string, helpers: Joi.CustomHelpers) => {
       const capitalized = value.charAt(0).toUpperCase() + value.slice(1);
