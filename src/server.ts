@@ -4,12 +4,16 @@ import config from './app/config/index.js';
 import mongoose from 'mongoose';
 import seedSuperAdmin from './app/DB/index.js';
 import { socketService } from './app/socket/socket.service.js';
+import { NotificationService } from './app/modules/notification/notification.service.js';
 
 let server: Server;
 async function main() {
   try {
     await mongoose.connect(config.database_url as string);
     seedSuperAdmin();
+    void NotificationService.backfillRetentionIntoDB().catch((error) => {
+      console.error('Notification retention backfill failed.', error);
+    });
     const httpServer = createServer(app);
     socketService.initialize(httpServer);
     server = httpServer.listen(config.port, () => {

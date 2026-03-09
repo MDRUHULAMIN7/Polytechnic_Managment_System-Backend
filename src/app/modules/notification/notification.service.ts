@@ -13,6 +13,9 @@ import { User } from '../user/user.model.js';
 import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
 import type { TUser } from '../user/user.interface.js';
 
+const UNREAD_RETENTION_DAYS = 30;
+const READ_RETENTION_DAYS = 7;
+
 function normalizeNotification(doc: {
   _id: { toString(): string };
   kind: TNotificationKind;
@@ -37,6 +40,18 @@ function normalizeNotification(doc: {
     readAt: doc.readAt?.toISOString(),
     createdAt: doc.createdAt?.toISOString() ?? new Date().toISOString(),
   };
+}
+
+function addDays(value: Date, days: number) {
+  return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function unreadExpiryAt(base: Date = new Date()) {
+  return addDays(base, UNREAD_RETENTION_DAYS);
+}
+
+function readExpiryAt(base: Date = new Date()) {
+  return addDays(base, READ_RETENTION_DAYS);
 }
 
 function pagination(query: Record<string, unknown>) {
@@ -93,6 +108,7 @@ async function createManyIntoDB(inputs: TNotificationCreateInput[]) {
     inputs.map((input) => ({
       ...input,
       isRead: false,
+      expiresAt: unreadExpiryAt(),
     })),
   );
 }
@@ -243,6 +259,7 @@ async function getUnreadCountFromDB(userId: string) {
 }
 
 async function markAsReadIntoDB(notificationId: string, userId: string) {
+  const readAt = new Date();
   const result = await Notification.findOneAndUpdate(
     {
       _id: notificationId,
@@ -250,7 +267,8 @@ async function markAsReadIntoDB(notificationId: string, userId: string) {
     },
     {
       isRead: true,
-      readAt: new Date(),
+      readAt,
+      expiresAt: readExpiryAt(readAt),
     },
     {
       new: true,
@@ -265,6 +283,7 @@ async function markAsReadIntoDB(notificationId: string, userId: string) {
 }
 
 async function markAllAsReadIntoDB(userId: string) {
+  const readAt = new Date();
   await Notification.updateMany(
     {
       recipientUserId: userId,
@@ -272,7 +291,8 @@ async function markAllAsReadIntoDB(userId: string) {
     },
     {
       isRead: true,
-      readAt: new Date(),
+      readAt,
+      expiresAt: readExpiryAt(readAt),
     },
   );
 
@@ -283,6 +303,33 @@ async function clearAllIntoDB(userId: string) {
   await Notification.deleteMany({
     recipientUserId: userId,
   });
+
+  return null;
+}
+
+async function backfillRetentionIntoDB() {
+  const now = new Date();
+
+  await Promise.all([
+    Notification.updateMany(
+      {
+        isRead: true,
+        expiresAt: { $exists: false },
+      },
+      {
+        expiresAt: readExpiryAt(now),
+      },
+    ),
+    Notification.updateMany(
+      {
+        isRead: false,
+        expiresAt: { $exists: false },
+      },
+      {
+        expiresAt: unreadExpiryAt(now),
+      },
+    ),
+  ]);
 
   return null;
 }
@@ -597,6 +644,7 @@ export const NotificationService = {
   markAsReadIntoDB,
   markAllAsReadIntoDB,
   clearAllIntoDB,
+  backfillRetentionIntoDB,
   notifyClassStarted,
   notifyClassCompleted,
   notifyClassCancelled,

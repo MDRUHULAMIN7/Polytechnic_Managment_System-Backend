@@ -58,6 +58,11 @@ const notificationSchema = new Schema<TNotification>(
       type: Date,
       default: undefined,
     },
+    expiresAt: {
+      type: Date,
+      default: undefined,
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -65,6 +70,7 @@ const notificationSchema = new Schema<TNotification>(
 );
 
 notificationSchema.index({ recipientUserId: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const Notification = mongoose.model<TNotification>(
   'Notification',

@@ -25,6 +25,7 @@ export type TNotification = {
   meta?: Record<string, unknown>;
   isRead: boolean;
   readAt?: Date;
+  expiresAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 };
