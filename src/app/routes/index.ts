@@ -17,6 +17,7 @@ import { ClassSessionRoutes } from '../modules/classSession/classSession.route.j
 import { StudentAttendanceRoutes } from '../modules/studentAttendance/studentAttendance.route.js';
 import { NoticeRoutes } from '../modules/notice/notice.route.js';
 import { NotificationRoutes } from '../modules/notification/notification.route.js';
+import { ChatbotRoutes } from '../modules/chatbot/chatbot.route.js';
 
 const router = Router();
 
@@ -92,6 +93,10 @@ const moduleRoutes = [
   {
     path: '/notifications',
     route: NotificationRoutes,
+  },
+  {
+    path: '/chatbot',
+    route: ChatbotRoutes,
   },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));
