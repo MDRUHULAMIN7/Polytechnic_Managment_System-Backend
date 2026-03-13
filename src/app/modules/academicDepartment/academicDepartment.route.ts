@@ -7,6 +7,16 @@ import { USER_ROLE } from '../user/user.constant.js';
 
 const router = express.Router();
 
+router.get(
+  '/public',
+  AcademicDepartmentControllers.getAllAcademicDepartments,
+);
+
+router.get(
+  '/public/:departmentId',
+  AcademicDepartmentControllers.getSingleAcademicDepartment,
+);
+
 router.post(
   '/create-academic-department',auth(USER_ROLE.admin,USER_ROLE.superAdmin),
   validateRequest(

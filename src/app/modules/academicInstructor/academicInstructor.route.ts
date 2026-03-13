@@ -8,6 +8,16 @@ import { USER_ROLE } from '../user/user.constant.js';
 
 const router = express.Router();
 
+router.get(
+  '/public',
+  AcademicInstructorControllers.getAllAcademicInstructors,
+);
+
+router.get(
+  '/public/:InstructorId',
+  AcademicInstructorControllers.getSingleAcademicInstructor,
+);
+
 router.post(
   '/create-academic-instructor',auth(USER_ROLE.superAdmin,USER_ROLE.admin),
   validateRequest(
