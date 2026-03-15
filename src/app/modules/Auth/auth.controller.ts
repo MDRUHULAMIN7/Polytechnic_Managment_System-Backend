@@ -6,9 +6,10 @@ import { AuthServices } from "./auth.service.js";
 import AppError from "../../errors/AppError.js";
 
 const secureCookie = config.NODE_ENV === "production";
+const sameSiteMode = (secureCookie ? "none" : "lax") as const;
 const cookieBaseOptions = {
   secure: secureCookie,
-  sameSite: "lax" as const,
+  sameSite: sameSiteMode,
   path: "/",
 };
 

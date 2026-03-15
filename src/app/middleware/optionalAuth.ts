@@ -5,9 +5,12 @@ import catchAsync from '../utils/CatchAsync.js';
 import { User } from '../modules/user/user.model.js';
 import { createToken } from '../modules/Auth/auth.utils.js';
 
+const isProduction = config.NODE_ENV === 'production';
+const sameSiteMode = (isProduction ? 'none' : 'lax') as const;
+
 const accessCookieOptions = {
-  secure: config.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  secure: isProduction,
+  sameSite: sameSiteMode,
   httpOnly: true,
   path: '/',
 };
