@@ -1,171 +1,123 @@
-# RPI Polytechnic Management System
+# RPI Polytechnic Management System - Backend
 
-This is a comprehensive backend management system for RPI Polytechnic, built with **Express.js**, **TypeScript**, and **MongoDB**. It handles various administrative and academic processes such as user management (Students, Instructors, Admins), semester planning, subject offering, and registration.
+Comprehensive backend for the Polytechnic Management System (PMS). Built with Express + TypeScript and designed for academic operations, role-based dashboards, realtime notifications, and a public chatbot.
 
-## 🚀 Features
+## Key Features
 
--   **User Management**:
-    -   **Student**: Manage student profiles, guardians, and academic details.
-    -   **Instructor**: Manage instructor profiles and departmental assignments.
-    -   **Admin**: Administrative access and management.
-    -   **Authentication**: Secure login and password management using JWT and Bcrypt.
--   **Academic Management**:
-    -   **Academic Semesters**: Create and manage semesters with codes, years, and months.
-    -   **Academic Departments**: distinct departments and link them to instructors.
-    -   **Subjects**: Manage course subjects, credits, regulations, and prerequisites.
-    -   **Offered Subjects**: Schedule subjects for specific semesters, instructors, and time slots.
-    -   **Semester Registration**: Manage registration periods, status (Upcoming, Ongoing, Ended), and shifts.
+- Authentication with JWT (access + refresh) and password reset flow.
+- Role-based access for admin, super admin, instructor, and student.
+- User management for students, instructors, and admins.
+- Academic management for semesters, departments, instructors, subjects, and curriculums.
+- Semester operations: registrations, offered subjects, enrollments, and enrolled subjects.
+- Class sessions and student attendance tracking.
+- Notices with targeting, read/acknowledge tracking, and publish flow.
+- Notifications API + realtime updates via Socket.IO.
+- Chatbot API powered by OpenRouter.
+- Media uploads via Cloudinary.
 
-## 🛠 Technology Stack
+## Tech Stack
 
--   **Runtime**: Node.js
--   **Framework**: Express.js
--   **Language**: TypeScript
--   **Database**: MongoDB (via Mongoose)
--   **Validation**: Zod & Mongoose Schema Validation
--   **Authentication**: JSON Web Tokens (JWT)
--   **Utilities**:
-    -   `bcrypt` for password hashing.
-    -   `cors` for cross-origin resource sharing.
-    -   `cookie-parser` for cookie handling.
-    -   `helmet` & `cors` for security.
+- Node.js + Express 5
+- TypeScript
+- MongoDB + Mongoose
+- Zod + Joi validation
+- JWT + bcrypt
+- Socket.IO
+- Nodemailer
+- Cloudinary
 
-## 🏃‍♂️ Installation & Run Locally
+## Project Structure
 
-1.  **Clone the repository**
-    ```bash
-    git clone <repository-url>
-    cd rpi_p_m_s
-    ```
+- `src/app/routes` — route registrations
+- `src/app/modules` — feature modules (auth, notices, notifications, chatbot, etc.)
+- `src/app/socket` — realtime event types and Socket.IO wiring
+- `src/server.ts` — app bootstrap + server start
 
-2.  **Install Dependencies**
-    ```bash
-    npm install
-    ```
+## Environment
 
-3.  **Set up Environment Variables**
-    Create a `.env` file in the root directory and configure your variables (PORT, DATABASE_URL, etc.).
+Required environment variables:
 
-4.  **Run in Development Mode**
-    ```bash
-    npm run start:dev
-    ```
+```
+NODE_ENV=production
+PORT=5000
+DATABASE_URL=
+BCRYPT_SALT_ROUNDS=12
+DEFAULT_PASS=
+JWT_ACCESS_SECRET=
+JWT_REFRESH_SECRET=
+JWT_ACCESS_EXPIRES_IN=1d
+JWT_REFRESH_EXPIRES_IN=30d
+RESET_PASS_UI_LINK=https://your-frontend-domain/reset-password
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+SUPER_ADMIN_PASSWORD=
+CORS_ORIGINS=https://your-frontend-domain
+```
 
-5.  **Build and Run Production**
-    ```bash
-    npm run build
-    npm run start:prod
-    ```
+Optional (required if you enable chatbot):
 
-## 📚 Database Schemas
+```
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=
+OPENROUTER_SITE_URL=
+```
 
-Here is an overview of the key data models used in the system.
+## Setup
 
-### 1. User
-Base entity for authentication and authorization.
-- `id`: String (Unique)
-- `email`: String (Unique)
-- `password`: String (Hashed)
-- `role`: Enum (`student`, `admin`, `instructor`)
-- `status`: Enum (`active`, `blocked`)
-- `isDeleted`: Boolean
+```bash
+cd backend
+npm install
+cp .env.example .env
+npm run start:dev
+```
 
-### 2. Student
-Extends User with academic and personal details.
-- `id`: String (Unique, Student ID)
-- `user`: ObjectId (Ref: User)
-- `name`: Object (First, Middle, Last Name)
-- `gender`: Enum (`male`, `female`, `others`)
-- `dateOfBirth`: Date
-- `email`: String
-- `contactNo`: String
-- `emergencyContactNo`: String
-- `bloodGroup`: Enum (`A+`, `A-`, `B+`, etc.)
-- `presentAddress`: String
-- `permanentAddress`: String
-- `guardian`: Object (Father/Mother details)
-- `localGuardian`: Object (Name, Occupation, Contact, Address)
-- `admissionSemester`: ObjectId (Ref: AcademicSemester)
-- `academicDepartment`: ObjectId (Ref: AcademicDepartment)
+## Scripts
 
-### 3. Instructor
-Details for teaching staff.
-- `id`: String
-- `user`: ObjectId (Ref: User)
-- `designation`: String
-- `name`: Object
-- `gender`: Enum
-- `dateOfBirth`: Date
-- `email`: String
-- `contactNo`: String
-- `academicDepartment`: ObjectId (Ref: AcademicDepartment)
+- `npm run start:dev` — dev server with hot reload
+- `npm run build` — compile TypeScript
+- `npm run start` — start compiled server
+- `npm run lint` — lint
+- `npm run lint:fix` — lint and fix
 
-### 4. Admin
-Administrative staff details.
-- `id`: String
-- `user`: ObjectId (Ref: User)
-- `designation`: String
-- `name`: Object
-- `contactNo`: String
-- `email`: String
+## API Routes (Overview)
 
-### 5. Academic Semester
-Defines the academic calendar.
-- `name`: Enum (`Autumn`, `Summer`, `Fall`)
-- `code`: Enum (`01`, `02`, `03`)
-- `year`: String
-- `startMonth`: Enum (Months)
-- `endMonth`: Enum (Months)
+Base prefix: `/api/v1`
 
-### 6. Subject
-Course curriculum details.
-- `title`: String
-- `prefix`: String
-- `code`: Number
-- `credits`: Number
-- `regulation`: Number
-- `preRequisiteSubjects`: Array of Objects (Ref: Subject)
+- `/auth`
+- `/users`
+- `/students`
+- `/instructors`
+- `/admins`
+- `/academic-semester`
+- `/academic-instructor`
+- `/academic-department`
+- `/subjects`
+- `/curriculums`
+- `/semester-registrations`
+- `/offered-subject`
+- `/enrolled-subjects`
+- `/semester-enrollments`
+- `/class-sessions`
+- `/student-attendance`
+- `/notices`
+- `/notifications`
+- `/chatbot`
 
-### 7. Semester Registration
-Controls registration windows.
-- `academicSemester`: ObjectId (Ref: AcademicSemester)
-- `status`: Enum (`UPCOMING`, `ONGOING`, `ENDED`)
-- `shift`: Enum
-- `startDate`: Date
-- `endDate`: Date
-- `totalCredit`: Number
+## Realtime Events
 
-### 8. Offered Subject
-Specific classes available for registration.
-- `semesterRegistration`: ObjectId (Ref: SemesterRegistration)
-- `academicSemester`: ObjectId (Ref: AcademicSemester)
-- `academicDepartment`: ObjectId (Ref: AcademicDepartment)
-- `subject`: ObjectId (Ref: Subject)
-- `instructor`: ObjectId (Ref: Instructor)
-- `maxCapacity`: Number
-- `section`: Number
-- `days`: Array (`Sat`, `Sun`, `Mon`, etc.)
-- `startTime`: String
-- `endTime`: String
+Socket.IO emits notification events for key actions, including:
 
-## 🛣 API Routes (Overview)
+- notice published
+- class started / completed / cancelled
+- attendance marked
+- offered subject assigned / removed
 
--   `/api/v1/users` - User management
--   `/api/v1/students` - Student operations
--   `/api/v1/admins` - Admin operations
--   `/api/v1/instructors` - Instructor operations
--   `/api/v1/academic-semesters` - Semester management
--   `/api/v1/academic-departments` - Department management
--   `/api/v1/subjects` - Subject management
--   `/api/v1/courses` - Course offerings
--   `/api/v1/semester-registrations` - Registration management
--   `/api/v1/auth` - Authentication (Login/Refresh Token)
+Clients can also fetch, mark read, and clear notifications via the REST API.
 
 ## Render Deploy
 
-This backend uses `src/server.ts` to start the HTTP server and initialize
-Socket.IO. For production realtime notifications, deploy it as a persistent
-Node web service.
+This backend uses `src/server.ts` to start the HTTP server and initialize Socket.IO. For production realtime notifications, deploy it as a persistent Node web service.
 
 ### Included deploy files
 
@@ -175,46 +127,45 @@ Node web service.
 
 ### Render service settings
 
-If you configure Render manually, use:
-
 - Root directory: `backend`
 - Build command: `npm ci && npm run build`
 - Start command: `npm run start`
 - Health check path: `/health`
 
-### Required environment variables
-
-- `NODE_ENV=production`
-- `DATABASE_URL`
-- `BCRYPT_SALT_ROUNDS`
-- `DEFAULT_PASS`
-- `JWT_ACCESS_SECRET`
-- `JWT_REFRESH_SECRET`
-- `JWT_ACCESS_EXPIRES_IN`
-- `JWT_REFRESH_EXPIRES_IN`
-- `RESET_PASS_UI_LINK`
-- `CLOUDINARY_CLOUD_NAME`
-- `CLOUDINARY_API_KEY`
-- `CLOUDINARY_API_SECRET`
-- `SUPER_ADMIN_PASSWORD`
-- `CORS_ORIGINS`
-
 ### Frontend environment after backend deploy
 
 If Render gives you a backend URL like `https://pms-backend.onrender.com`, set:
 
-- `NEXT_PUBLIC_API_BASE_URL=https://pms-backend.onrender.com/api/v1`
-- `NEXT_PUBLIC_SOCKET_URL=https://pms-backend.onrender.com`
+```
+NEXT_PUBLIC_API_BASE_URL=https://pms-backend.onrender.com/api/v1
+NEXT_PUBLIC_SOCKET_URL=https://pms-backend.onrender.com
+```
 
 Set backend `CORS_ORIGINS` to include your frontend URL, for example:
 
-```env
+```
 CORS_ORIGINS=https://your-frontend-domain.vercel.app,http://localhost:3000
 ```
 
 Set `RESET_PASS_UI_LINK` to your deployed frontend reset page:
 
-```env
+```
 RESET_PASS_UI_LINK=https://your-frontend-domain.vercel.app/reset-password
 ```
 
+## Users Credentials
+
+Use the following accounts for testing:
+
+- SuperAdmin
+  - ID: 0001
+  - Password: admin12345
+- Admin
+  - ID: A-0001
+  - Password: admin1234
+- Instructor
+  - ID: I-0003
+  - Password: Instructor@123
+- Student
+  - ID: 2027010001
+  - Password: ruhul1234
