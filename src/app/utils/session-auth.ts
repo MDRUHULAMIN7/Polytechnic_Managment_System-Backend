@@ -6,7 +6,7 @@ import { User } from '../modules/user/user.model.js';
 import { createToken } from '../modules/Auth/auth.utils.js';
 
 const isProduction = config.NODE_ENV === 'production';
-const sameSiteMode = (isProduction ? 'none' : 'lax') as const;
+const sameSiteMode: 'none' | 'lax' = isProduction ? 'none' : 'lax';
 
 export const accessCookieOptions = {
   secure: isProduction,
