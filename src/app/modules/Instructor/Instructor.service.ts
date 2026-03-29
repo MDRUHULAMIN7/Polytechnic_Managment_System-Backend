@@ -8,6 +8,16 @@ import { StatusCodes } from "http-status-codes";
 import { User } from "../user/user.model.js";
 import { SubjectInstructor } from "../subject/subject.model.js";
 
+const PUBLIC_INSTRUCTOR_FIELDS =
+  "id name designation email profileImg academicDepartment createdAt updatedAt";
+const PUBLIC_INSTRUCTOR_SEARCHABLE_FIELDS = [
+  "id",
+  "email",
+  "designation",
+  "name.firstName",
+  "name.lastName",
+  "name.middleName",
+];
 
 const getAllInstructorsFromDB = async (query: Record<string, unknown>) => {
   const instructorQuery = new QueryBuilder(
@@ -30,10 +40,39 @@ const getAllInstructorsFromDB = async (query: Record<string, unknown>) => {
   };
 };
 
+const getAllPublicInstructorsFromDB = async (query: Record<string, unknown>) => {
+  const instructorQuery = new QueryBuilder(
+    Instructor.find().populate("academicDepartment", "name"),
+    query,
+  )
+    .search(PUBLIC_INSTRUCTOR_SEARCHABLE_FIELDS)
+    .filter()
+    .sort()
+    .paginate();
+
+  instructorQuery.modelQuery = instructorQuery.modelQuery.select(PUBLIC_INSTRUCTOR_FIELDS);
+
+  const result = await instructorQuery.modelQuery;
+  const meta = await instructorQuery.countTotal();
+
+  return {
+    meta,
+    result,
+  };
+};
+
 const getSingleInstructorFromDB = async (id: string) => {
   const result = await Instructor.findById(id)
     .populate('academicDepartment')
     .populate('user');
+
+  return result;
+};
+
+const getSinglePublicInstructorFromDB = async (id: string) => {
+  const result = await Instructor.findById(id)
+    .select(PUBLIC_INSTRUCTOR_FIELDS)
+    .populate("academicDepartment", "name");
 
   return result;
 };
@@ -124,7 +163,9 @@ const deleteInstructorFromDB = async (id: string) => {
 
 export const InstructorServices = {
   getAllInstructorsFromDB,
+  getAllPublicInstructorsFromDB,
   getSingleInstructorFromDB,
+  getSinglePublicInstructorFromDB,
   getInstructorSummaryFromDB,
   getAssignedSubjectsForInstructorFromDB,
   updateInstructorIntoDB,

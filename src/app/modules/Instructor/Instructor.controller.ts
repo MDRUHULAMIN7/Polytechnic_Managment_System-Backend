@@ -16,6 +16,18 @@ const getSingleInstructor = catchAsync(async (req, res) => {
   });
 });
 
+const getSinglePublicInstructor = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await InstructorServices.getSinglePublicInstructorFromDB(id);
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: "Public instructor is retrieved succesfully",
+    data: result,
+  });
+});
+
 const getAllInstructors = catchAsync(async (req, res) => {
   const result = await InstructorServices.getAllInstructorsFromDB(req.query);
    
@@ -23,6 +35,17 @@ const getAllInstructors = catchAsync(async (req, res) => {
     statusCode: StatusCodes.OK,
     success: true,
     message: 'Instructors are retrieved succesfully',
+    data: result,
+  });
+});
+
+const getAllPublicInstructors = catchAsync(async (req, res) => {
+  const result = await InstructorServices.getAllPublicInstructorsFromDB(req.query);
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: "Public instructors are retrieved succesfully",
     data: result,
   });
 });
@@ -79,6 +102,8 @@ const deleteInstructor = catchAsync(async (req, res) => {
 });
 
 export const InstructorControllers = {
+  getAllPublicInstructors,
+  getSinglePublicInstructor,
   getAllInstructors,
   getSingleInstructor,
   getInstructorSummary,
