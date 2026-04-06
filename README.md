@@ -1,43 +1,107 @@
-# RPI Polytechnic Management System - Backend
+# PMS Backend
 
-Comprehensive backend for the Polytechnic Management System (PMS). Built with Express + TypeScript and designed for academic operations, role-based dashboards, realtime notifications, and a public chatbot.
+Express and TypeScript backend for the Polytechnic Management System. This service powers authentication, role-based academic operations, realtime notifications, media uploads, and chatbot-assisted public experiences.
 
-## Key Features
+Connected frontend: [https://polytechnic-managment.vercel.app/](https://polytechnic-managment.vercel.app/)
 
-- Authentication with JWT (access + refresh) and password reset flow.
-- Role-based access for admin, super admin, instructor, and student.
-- User management for students, instructors, and admins.
-- Academic management for semesters, departments, instructors, subjects, and curriculums.
-- Semester operations: registrations, offered subjects, enrollments, and enrolled subjects.
-- Class sessions and student attendance tracking.
-- Notices with targeting, read/acknowledge tracking, and publish flow.
-- Notifications API + realtime updates via Socket.IO.
-- Chatbot API powered by OpenRouter.
-- Media uploads via Cloudinary.
+## Overview
+
+The backend acts as the operational core of the platform:
+
+- authenticates users and maintains role-safe access
+- manages students, instructors, admins, and super admin capabilities
+- drives semester, subject, curriculum, class-session, and attendance workflows
+- serves notices, notifications, and chatbot endpoints
+- supports Cloudinary-based image uploads
+- exposes a health endpoint for deployment monitoring and wake-up checks
+
+## Main Capabilities
+
+### Identity and access
+
+- JWT-based access and refresh token flow
+- password reset support
+- role-based authorization for `student`, `instructor`, `admin`, and `superAdmin`
+- account status control, including blocked user handling
+
+### Academic operations
+
+- academic semesters
+- academic departments
+- academic instructors
+- subjects
+- curriculums
+- semester registrations
+- offered subjects
+- semester enrollments
+- enrolled subjects
+- class sessions
+- attendance tracking
+
+### Communication systems
+
+- notices with publish and targeting flows
+- in-app notifications
+- Socket.IO realtime delivery for important academic events
+- public chatbot integration
+
+### Media and profile support
+
+- Cloudinary upload flow for user profile images
+- multipart file upload handling through multer
+- editable self-profile support for student, instructor, and admin accounts
 
 ## Tech Stack
 
-- Node.js + Express 5
+- Node.js
+- Express 5
 - TypeScript
-- MongoDB + Mongoose
-- Zod + Joi validation
-- JWT + bcrypt
+- MongoDB
+- Mongoose
+- Zod
+- Joi
+- JWT
+- bcrypt
 - Socket.IO
 - Nodemailer
 - Cloudinary
 
-## Project Structure
+## Repository Layout
 
-- `src/app/routes` — route registrations
-- `src/app/modules` — feature modules (auth, notices, notifications, chatbot, etc.)
-- `src/app/socket` — realtime event types and Socket.IO wiring
-- `src/server.ts` — app bootstrap + server start
+- `src/server.ts`
+  Bootstraps MongoDB, seeds the super admin, and starts the HTTP server.
+- `src/app.ts`
+  Express app setup, CORS, parsers, routes, and health endpoint.
+- `src/app/routes`
+  Central route registration layer.
+- `src/app/modules`
+  Feature-focused modules for auth, users, academics, classes, notices, notifications, chatbot, and more.
+- `src/app/socket`
+  Realtime socket setup, middleware, and event delivery.
+- `src/app/utils`
+  Shared utilities such as Cloudinary upload, response helpers, and async wrappers.
 
-## Environment
+## API Base and Health Check
 
-Required environment variables:
+Base prefix:
 
+```txt
+/api/v1
 ```
+
+Health endpoint:
+
+```txt
+GET /health
+```
+
+The frontend uses this health endpoint to detect cold starts and present a professional wake-up message when free hosting delays the first request.
+
+## Environment Variables
+
+Create `backend/.env` and configure the following values:
+
+```env
 NODE_ENV=production
 PORT=5000
 DATABASE_URL=
@@ -47,42 +111,57 @@ JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
 JWT_ACCESS_EXPIRES_IN=1d
 JWT_REFRESH_EXPIRES_IN=30d
-RESET_PASS_UI_LINK=https://your-frontend-domain/reset-password
+RESET_PASS_UI_LINK=https://polytechnic-managment.vercel.app/reset-password
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 SUPER_ADMIN_PASSWORD=
-CORS_ORIGINS=https://your-frontend-domain
-```
-
-Optional (required if you enable chatbot):
-
-```
+CORS_ORIGINS=https://polytechnic-managment.vercel.app,http://localhost:3000
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=
-OPENROUTER_SITE_URL=
+OPENROUTER_SITE_URL=https://polytechnic-managment.vercel.app
 ```
 
-## Setup
+Notes:
+
+- `OPENROUTER_*` values are only required if chatbot features are enabled.
+- `CORS_ORIGINS` accepts a comma-separated list.
+- `RESET_PASS_UI_LINK` should point to the deployed frontend reset-password route.
+
+## Local Development
 
 ```bash
 cd backend
 npm install
-cp .env.example .env
 npm run start:dev
 ```
 
-## Scripts
+Default local API host:
 
-- `npm run start:dev` — dev server with hot reload
-- `npm run build` — compile TypeScript
-- `npm run start` — start compiled server
-- `npm run lint` — lint
-- `npm run lint:fix` — lint and fix
+```txt
+http://localhost:5000
+```
 
-## API Routes (Overview)
+With the default API prefix, frontend requests typically target:
 
-Base prefix: `/api/v1`
+```txt
+http://localhost:5000/api/v1
+```
+
+## Available Scripts
+
+- `npm run start:dev` starts the development server with automatic reload.
+- `npm run build` compiles TypeScript to `dist/`.
+- `npm run start` runs the compiled server.
+- `npm run start:prod` runs the compiled server in production-style mode.
+- `npm run lint` runs ESLint on `src`.
+- `npm run lint:fix` runs ESLint with auto-fix.
+- `npm run prettier` formats supported source files.
+- `npm run prettier:fix` formats the `src` directory.
+
+## API Surface Overview
+
+Major route groups currently include:
 
 - `/auth`
 - `/users`
@@ -104,68 +183,57 @@ Base prefix: `/api/v1`
 - `/notifications`
 - `/chatbot`
 
-## Realtime Events
+## Realtime Notes
 
-Socket.IO emits notification events for key actions, including:
+Socket.IO is initialized during server startup and is used for important events such as:
 
-- notice published
-- class started / completed / cancelled
-- attendance marked
-- offered subject assigned / removed
+- notice publication
+- class started, completed, or cancelled
+- attendance updates
+- assigned or removed offered-subject notifications
 
-Clients can also fetch, mark read, and clear notifications via the REST API.
+This backend is therefore best deployed as a persistent Node service rather than a purely serverless API.
 
-## Render Deploy
+## Deployment Guidance
 
-This backend uses `src/server.ts` to start the HTTP server and initialize Socket.IO. For production realtime notifications, deploy it as a persistent Node web service.
+This backend is suitable for Render, Railway, VPS, or any persistent Node hosting environment.
 
-### Included deploy files
-
-- Blueprint: `render.yaml`
-- Example env file: `.env.example`
-- Health check endpoint: `GET /health`
-
-### Render service settings
+### Recommended production settings
 
 - Root directory: `backend`
 - Build command: `npm ci && npm run build`
 - Start command: `npm run start`
 - Health check path: `/health`
 
-### Frontend environment after backend deploy
+### Frontend integration
 
-If Render gives you a backend URL like `https://pms-backend.onrender.com`, set:
+If the backend is deployed to a host such as `https://your-backend-host.onrender.com`, set the frontend environment like this:
 
-```
-NEXT_PUBLIC_API_BASE_URL=https://pms-backend.onrender.com/api/v1
-NEXT_PUBLIC_SOCKET_URL=https://pms-backend.onrender.com
-```
-
-Set backend `CORS_ORIGINS` to include your frontend URL, for example:
-
-```
-CORS_ORIGINS=https://your-frontend-domain.vercel.app,http://localhost:3000
+```env
+NEXT_PUBLIC_API_BASE_URL=https://your-backend-host.onrender.com/api/v1
+NEXT_PUBLIC_SOCKET_URL=https://your-backend-host.onrender.com
+NEXT_PUBLIC_SITE_URL=https://polytechnic-managment.vercel.app
 ```
 
-Set `RESET_PASS_UI_LINK` to your deployed frontend reset page:
+### Free-tier hosting note
 
-```
-RESET_PASS_UI_LINK=https://your-frontend-domain.vercel.app/reset-password
-```
+If the backend is deployed on a free service that sleeps after inactivity, the first request may be slower. The frontend already includes a wake-up modal to explain that delay professionally to visitors while the backend becomes responsive.
 
-## Users Credentials
+## Demo Access
 
-Use the following accounts for testing:
+If you are using seeded local/demo data, these sample accounts may exist:
 
-- SuperAdmin
-  - ID: 0001
-  - Password: admin12345
+- Super Admin
+  ID: `0001`
+  Password: `admin12345`
 - Admin
-  - ID: A-0001
-  - Password: admin1234
+  ID: `A-0001`
+  Password: `admin1234`
 - Instructor
-  - ID: I-0003
-  - Password: Instructor@123
+  ID: `I-0003`
+  Password: `Instructor@123`
 - Student
-  - ID: 2027010001
-  - Password: ruhul1234
+  ID: `2027010001`
+  Password: `ruhul1234`
+
+Use demo credentials only for local or controlled environments.
