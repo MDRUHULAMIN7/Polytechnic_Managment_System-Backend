@@ -142,6 +142,39 @@ router.patch(
     USER_ROLE.student,
     USER_ROLE.superAdmin,
   ),
+  upload.single('file'),
+  (req: Request, res: Response, next: NextFunction) => {
+    const { data, profile } = req.body ?? {};
+
+    try {
+      if (typeof data === 'string') {
+        req.body = JSON.parse(data);
+        next();
+        return;
+      }
+
+      if (typeof profile === 'string') {
+        req.body = { profile: JSON.parse(profile) };
+        next();
+        return;
+      }
+
+      if (typeof profile === 'object' && profile !== null) {
+        req.body = { profile };
+        next();
+        return;
+      }
+
+      next();
+    } catch {
+      next(
+        new AppError(
+          StatusCodes.BAD_REQUEST,
+          'Invalid JSON in form-data. Check "data" or "profile" field.',
+        ),
+      );
+    }
+  },
   validateRequest(UserValidation.selfUpdateProfileValidationSchema),
   userControllers.updateMe,
 );

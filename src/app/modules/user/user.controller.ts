@@ -69,7 +69,7 @@ const updateMe = catchAsync(async (req, res) => {
   const { userId, role } = req.user;
   const { profile } = req.body;
 
-  const result = await userServices.updateMe(userId, role, profile);
+  const result = await userServices.updateMe(userId, role, profile, req.file);
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,

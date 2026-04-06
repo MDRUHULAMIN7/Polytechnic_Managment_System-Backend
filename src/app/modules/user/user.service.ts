@@ -408,11 +408,29 @@ const updateMe = async (
   userId: string,
   role: string,
   payload: TEditableProfilePayload,
+  file?: { path: string },
 ) => {
+  if (role === 'superAdmin') {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'This account does not have editable profile fields.',
+    );
+  }
+
+  const nextPayload: TEditableProfilePayload = { ...payload };
+  const uploadPath = file?.path;
+
+  if (uploadPath) {
+    const imageSeed = payload?.name?.firstName ?? role;
+    const imageName = `${userId}${imageSeed}`;
+    const uploadResult = await sendImageToCloudinary(imageName, uploadPath);
+    nextPayload.profileImg = uploadResult.secure_url;
+  }
+
   let result = null;
 
   if (role === 'student') {
-    const updatePayload = buildStudentUpdatePayload(payload);
+    const updatePayload = buildStudentUpdatePayload(nextPayload);
 
     if (!hasEditableValues(updatePayload)) {
       throw new AppError(
@@ -428,7 +446,7 @@ const updateMe = async (
   }
 
   if (role === 'instructor') {
-    const updatePayload = buildInstructorUpdatePayload(payload);
+    const updatePayload = buildInstructorUpdatePayload(nextPayload);
 
     if (!hasEditableValues(updatePayload)) {
       throw new AppError(
@@ -444,7 +462,7 @@ const updateMe = async (
   }
 
   if (role === 'admin') {
-    const updatePayload = buildAdminUpdatePayload(payload);
+    const updatePayload = buildAdminUpdatePayload(nextPayload);
 
     if (!hasEditableValues(updatePayload)) {
       throw new AppError(
@@ -457,13 +475,6 @@ const updateMe = async (
       new: true,
       runValidators: true,
     });
-  }
-
-  if (role === 'superAdmin') {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      'This account does not have editable profile fields.',
-    );
   }
 
   if (!result) {
