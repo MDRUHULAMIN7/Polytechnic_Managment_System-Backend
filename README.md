@@ -1,55 +1,102 @@
 # PMS Backend
 
-Express and TypeScript backend for the Polytechnic Management System. This service powers authentication, role-based academic operations, realtime notifications, media uploads, and chatbot-assisted public experiences.
+Production-ready Express and TypeScript backend for the Polytechnic Management System. This service powers authentication, academic workflows, realtime notifications, media uploads, public data delivery, and chatbot-assisted experiences for the PMS platform.
 
-Connected frontend: [https://polytechnic-managment.vercel.app/](https://polytechnic-managment.vercel.app/)
+## Project Overview
 
-## Overview
+| Item | Details |
+| --- | --- |
+| Live API Service | [https://pms-backend-3yl3.onrender.com/](https://pms-backend-3yl3.onrender.com/) |
+| API Base URL | [https://pms-backend-3yl3.onrender.com/api/v1](https://pms-backend-3yl3.onrender.com/api/v1) |
+| Health Check | [https://pms-backend-3yl3.onrender.com/health](https://pms-backend-3yl3.onrender.com/health) |
+| Connected Frontend | [https://polytechnic-managment.vercel.app/](https://polytechnic-managment.vercel.app/) |
+| Deployment | Render web service |
+| Main Goal | Centralize secure academic operations, public content delivery, and realtime institutional communication |
 
-The backend acts as the operational core of the platform:
+This backend was built to solve the operational side of the project. Instead of keeping authentication, academic data, notices, attendance, notifications, and media handling in separate disconnected services, PMS Backend brings them together in one structured API layer that both the public website and dashboard can rely on.
 
-- authenticates users and maintains role-safe access
-- manages students, instructors, admins, and super admin capabilities
-- drives semester, subject, curriculum, class-session, and attendance workflows
-- serves notices, notifications, and chatbot endpoints
-- supports Cloudinary-based image uploads
-- exposes a health endpoint for deployment monitoring and wake-up checks
+## Problem Breakdown, Features, and Solutions
 
-## Main Capabilities
+| Problem | Feature Added | Solution Outcome |
+| --- | --- | --- |
+| Academic and administrative data were spread across different manual or disconnected processes. | Modular REST API for students, instructors, admins, semesters, departments, subjects, curriculums, enrollments, classes, and attendance. | The frontend can manage the full academic workflow from one backend service. |
+| Different users needed different levels of access to the same platform. | JWT authentication, refresh-token flow, role-based authorization, and status checks for `student`, `instructor`, `admin`, and `superAdmin`. | Sensitive operations stay protected while each user gets the right level of visibility. |
+| Public visitors and authenticated users needed different data access patterns. | Public-friendly endpoints for notices, instructors, and chatbot access, plus protected dashboard APIs. | One backend can serve both the public website and secured institutional dashboards. |
+| Important events needed to reach users quickly without constant page refresh. | Socket.IO-based realtime notification delivery with user rooms, role rooms, unread counters, and read/clear flows. | Users receive operational updates faster and the frontend stays more responsive. |
+| Backend cold starts on free hosting could make the system feel unreliable. | Root route and `/health` endpoint for service visibility, monitoring, and frontend wake-up checks. | The platform can detect service readiness and communicate delays more gracefully. |
+| Profile and media updates required reliable file handling. | Multer-based upload parsing and Cloudinary image delivery. | Profile image workflows stay manageable without storing heavy files directly in the app server. |
+| Password recovery and account lifecycle handling needed to be production-aware. | Forget-password, reset-password, change-password, and seeded super-admin bootstrap flow. | Account access can be recovered safely and the system can initialize privileged access cleanly. |
+| Public discovery needed AI-assisted help without building a separate service. | Chatbot module with validated `/chatbot/ask` API integration. | The frontend can provide quick academic Q&A from the same backend platform. |
 
-### Identity and access
+## Development Challenges We Overcame
 
-- JWT-based access and refresh token flow
-- password reset support
-- role-based authorization for `student`, `instructor`, `admin`, and `superAdmin`
-- account status control, including blocked user handling
+The backend grew into more than a CRUD API. Several engineering challenges had to be solved to keep it usable and scalable:
 
-### Academic operations
+1. Role-safe access had to stay consistent across many modules.
+   Shared auth middleware, user role constants, and route-level protection were used so sensitive endpoints behave predictably.
+2. Academic data relationships are naturally complex.
+   The project was split into focused modules for semesters, subjects, offered subjects, class sessions, enrollments, and attendance to keep business logic organized.
+3. REST responses and realtime events needed to stay aligned.
+   Socket rooms, notification services, and API unread-state endpoints were combined so the dashboard can reflect both stored and live status.
+4. Free-tier deployment created first-request delays.
+   A dedicated health endpoint was added so the frontend can detect backend readiness and soften the cold-start experience.
+5. Media, email, and auth flows all introduce operational risk.
+   Cloudinary uploads, email helpers, token-based password recovery, and config-driven environment handling were introduced to make these flows production-friendly.
 
-- academic semesters
-- academic departments
-- academic instructors
-- subjects
-- curriculums
-- semester registrations
-- offered subjects
-- semester enrollments
-- enrolled subjects
-- class sessions
-- attendance tracking
+## Project Screenshots and Architecture
 
-### Communication systems
+The following assets show the deployed backend and the data structure behind it:
 
-- notices with publish and targeting flows
-- in-app notifications
-- Socket.IO realtime delivery for important academic events
-- public chatbot integration
+| Live API Root | Health Endpoint |
+| --- | --- |
+| <img src="./docs/screenshots/api-root.jpg" alt="PMS backend root endpoint preview" width="100%" /> | <img src="./docs/screenshots/health-endpoint.jpg" alt="PMS backend health endpoint preview" width="100%" /> |
 
-### Media and profile support
+| Latest Notices API Preview | Entity Relationship Diagram |
+| --- | --- |
+| <img src="./docs/screenshots/latest-notices-endpoint.jpg" alt="PMS backend latest notices endpoint preview" width="100%" /> | <img src="./docs/screenshots/er-diagram.png" alt="PMS backend entity relationship diagram" width="100%" /> |
 
-- Cloudinary upload flow for user profile images
-- multipart file upload handling through multer
-- editable self-profile support for student, instructor, and admin accounts
+## Features by User Type
+
+### Public Visitors and Frontend Guests
+
+- Fetch public notices, latest notices, and notice details without requiring full dashboard access.
+- Read public academic instructor data for the institutional website.
+- Use the chatbot endpoint for quick public-facing academic queries.
+- Hit root and health endpoints for availability checks and deployment monitoring.
+
+### Students
+
+- Authenticate, refresh sessions, change password, and recover access.
+- Access semester enrollments, enrolled subjects, class sessions, attendance, notices, notifications, and self-profile support.
+- Mark notices as read or acknowledged and manage notification read state.
+
+### Instructors
+
+- Authenticate and access instructor-facing class, subject, curriculum, semester, notice, and notification workflows.
+- Work with assigned academic data and classroom delivery records.
+- Use protected APIs for teaching-related dashboard experiences.
+
+### Admins
+
+- Manage students, instructors, academic instructors, departments, semesters, subjects, curriculums, semester registrations, offered subjects, enrollments, notices, and class-session operations.
+- Publish notices, supervise attendance-related flows, and trigger operational updates that appear in realtime on the frontend.
+
+### Super Admins
+
+- Access all admin-level backend capabilities.
+- Bootstrap privileged control through seeded super-admin creation when the system starts with an empty database.
+- Supervise admin-level access and high-privilege operational workflows.
+
+## Core Backend Modules
+
+- `Auth` - login, refresh token, logout, password change, forget-password, and reset-password flows.
+- `User`, `Student`, `Instructor`, `Admin` - user lifecycle and role-aware account operations.
+- `Academic Semester`, `Academic Department`, `Academic Instructor` - academic structure management.
+- `Subject`, `Curriculum`, `Semester Registration`, `Offered Subject`, `Semester Enrollment`, `Enrolled Subject` - core academic delivery workflow.
+- `Class Session`, `Student Attendance` - schedule and attendance tracking.
+- `Notice`, `Notification` - communication, visibility, and realtime update support.
+- `Chatbot` - validated public assistant endpoint.
+- `Socket Service` - role rooms, user rooms, and event broadcasting.
 
 ## Tech Stack
 
@@ -58,30 +105,50 @@ The backend acts as the operational core of the platform:
 - TypeScript
 - MongoDB
 - Mongoose
-- Zod
-- Joi
 - JWT
 - bcrypt
+- Zod
+- Joi
 - Socket.IO
 - Nodemailer
 - Cloudinary
+- Multer
 
 ## Repository Layout
 
-- `src/server.ts`
-  Bootstraps MongoDB, seeds the super admin, and starts the HTTP server.
-- `src/app.ts`
-  Express app setup, CORS, parsers, routes, and health endpoint.
-- `src/app/routes`
-  Central route registration layer.
-- `src/app/modules`
-  Feature-focused modules for auth, users, academics, classes, notices, notifications, chatbot, and more.
-- `src/app/socket`
-  Realtime socket setup, middleware, and event delivery.
-- `src/app/utils`
-  Shared utilities such as Cloudinary upload, response helpers, and async wrappers.
+- `src/server.ts` - connects MongoDB, seeds the super admin, initializes Socket.IO, and starts the HTTP server.
+- `src/app.ts` - configures Express, CORS, parsers, routes, root response, and health endpoint.
+- `src/app/routes/` - central API route registration.
+- `src/app/modules/` - feature modules for auth, academics, classes, notices, notifications, chatbot, and user roles.
+- `src/app/socket/` - socket middleware, types, and event delivery logic.
+- `src/app/utils/` - shared helpers such as Cloudinary upload, email sending, and response wrappers.
+- `src/app/config/` - environment and CORS configuration.
+- `src/app/DB/` - startup database bootstrap logic, including seeded super-admin creation.
+- `docs/screenshots/` - README preview assets captured from the deployed backend and ER diagram.
 
-## API Base and Health Check
+## API Surface Overview
+
+Major route groups currently include:
+
+- `/auth`
+- `/users`
+- `/students`
+- `/instructors`
+- `/admins`
+- `/academic-semester`
+- `/academic-instructor`
+- `/academic-department`
+- `/subjects`
+- `/curriculums`
+- `/semester-registrations`
+- `/offered-subject`
+- `/enrolled-subjects`
+- `/semester-enrollments`
+- `/class-sessions`
+- `/student-attendance`
+- `/notices`
+- `/notifications`
+- `/chatbot`
 
 Base prefix:
 
@@ -94,8 +161,6 @@ Health endpoint:
 ```txt
 GET /health
 ```
-
-The frontend uses this health endpoint to detect cold starts and present a professional wake-up message when free hosting delays the first request.
 
 ## Environment Variables
 
@@ -124,9 +189,10 @@ OPENROUTER_SITE_URL=https://polytechnic-managment.vercel.app
 
 Notes:
 
-- `OPENROUTER_*` values are only required if chatbot features are enabled.
 - `CORS_ORIGINS` accepts a comma-separated list.
 - `RESET_PASS_UI_LINK` should point to the deployed frontend reset-password route.
+- `OPENROUTER_*` values are only required if chatbot features are enabled.
+- `SUPER_ADMIN_PASSWORD` is used during the initial super-admin seed flow.
 
 ## Local Development
 
@@ -142,7 +208,7 @@ Default local API host:
 http://localhost:5000
 ```
 
-With the default API prefix, frontend requests typically target:
+With the default API prefix:
 
 ```txt
 http://localhost:5000/api/v1
@@ -158,41 +224,18 @@ http://localhost:5000/api/v1
 - `npm run lint:fix` runs ESLint with auto-fix.
 - `npm run prettier` formats supported source files.
 - `npm run prettier:fix` formats the `src` directory.
-
-## API Surface Overview
-
-Major route groups currently include:
-
-- `/auth`
-- `/users`
-- `/students`
-- `/instructors`
-- `/admins`
-- `/academic-semester`
-- `/academic-instructor`
-- `/academic-department`
-- `/subjects`
-- `/curriculums`
-- `/semester-registrations`
-- `/offered-subject`
-- `/enrolled-subjects`
-- `/semester-enrollments`
-- `/class-sessions`
-- `/student-attendance`
-- `/notices`
-- `/notifications`
-- `/chatbot`
+- `npm test` is currently a placeholder script and not yet configured with automated backend tests.
 
 ## Realtime Notes
 
-Socket.IO is initialized during server startup and is used for important events such as:
+Socket.IO is initialized during server startup and supports role-based or user-based delivery. This is used for events such as:
 
 - notice publication
-- class started, completed, or cancelled
-- attendance updates
-- assigned or removed offered-subject notifications
+- class started, completed, cancelled, or missed updates
+- attendance-related updates
+- offered-subject assignment notifications
 
-This backend is therefore best deployed as a persistent Node service rather than a purely serverless API.
+Because of this realtime layer, the backend is best deployed as a persistent Node service instead of a purely serverless API.
 
 ## Deployment Guidance
 
@@ -201,13 +244,13 @@ This backend is suitable for Render, Railway, VPS, or any persistent Node hostin
 ### Recommended production settings
 
 - Root directory: `backend`
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci --include=dev && npm run build`
 - Start command: `npm run start`
 - Health check path: `/health`
 
 ### Frontend integration
 
-If the backend is deployed to a host such as `https://your-backend-host.onrender.com`, set the frontend environment like this:
+If the backend host is `https://your-backend-host.onrender.com`, set the frontend environment like this:
 
 ```env
 NEXT_PUBLIC_API_BASE_URL=https://your-backend-host.onrender.com/api/v1
@@ -217,11 +260,22 @@ NEXT_PUBLIC_SITE_URL=https://polytechnic-managment.vercel.app
 
 ### Free-tier hosting note
 
-If the backend is deployed on a free service that sleeps after inactivity, the first request may be slower. The frontend already includes a wake-up modal to explain that delay professionally to visitors while the backend becomes responsive.
+This project is currently deployed on a Render free plan. After inactivity, the first request may be slower. The frontend already includes a wake-up modal that uses the backend health check to explain that delay more clearly to users.
+
+## Quality and Maintenance
+
+This backend is structured for ongoing growth:
+
+- modular feature-based folders
+- central route registration
+- shared validation and error handling
+- reusable auth and response helpers
+- realtime delivery support through Socket.IO
+- deployable health-check support for monitoring and UX coordination
 
 ## Demo Access
 
-If you are using seeded local/demo data, these sample accounts may exist:
+If you are using seeded local or controlled demo data, the following sample accounts may be available:
 
 - Super Admin
   ID: `0001`
