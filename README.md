@@ -53,7 +53,7 @@ The following assets show the deployed backend and the data structure behind it:
 
 | Latest Notices API Preview | Entity Relationship Diagram |
 | --- | --- |
-| <img src="./docs/screenshots/latest-notices-endpoint.jpg" alt="PMS backend latest notices endpoint preview" width="100%" /> | <img src="./docs/screenshots/er-diagram.png" alt="PMS backend entity relationship diagram" width="100%" /> |
+| <img src="./docs/screenshots/latest-notices-endpoint.jpg" alt="PMS backend latest notices endpoint preview" width="100%" /> | <img src="./docs/screenshots/Polytechnic Management System ER Diagram.png" alt="PMS backend entity relationship diagram" width="100%" /> |
 
 ## Features by User Type
 
