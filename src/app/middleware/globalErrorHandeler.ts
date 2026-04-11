@@ -62,7 +62,12 @@ const globalErrorHandeler: ErrorRequestHandler = (
         message: err?.message,
       },
     ];
-  } 
+  }
+
+  console.error(
+    `[Error] ${req.method} ${req.originalUrl} -> ${statusCode} ${message}`,
+    err,
+  );
 
   return res.status(statusCode).json({
     success: false,

@@ -180,6 +180,12 @@ RESET_PASS_UI_LINK=https://polytechnic-managment.vercel.app/reset-password
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
 SUPER_ADMIN_PASSWORD=
 CORS_ORIGINS=https://polytechnic-managment.vercel.app,http://localhost:3000
 OPENROUTER_API_KEY=
@@ -191,6 +197,7 @@ Notes:
 
 - `CORS_ORIGINS` accepts a comma-separated list.
 - `RESET_PASS_UI_LINK` should point to the deployed frontend reset-password route.
+- `SMTP_USER`, `SMTP_PASS`, and optional `SMTP_FROM` should come from your secret manager or deployment environment, never from source code.
 - `OPENROUTER_*` values are only required if chatbot features are enabled.
 - `SUPER_ADMIN_PASSWORD` is used during the initial super-admin seed flow.
 

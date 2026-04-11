@@ -198,9 +198,27 @@ const forgetPassword = async (userId: string) => {
   );
 
   const resetUILink = `${config.reset_pass_ui_link}?id=${user.id}&token=${resetToken}`;
+  const deliveryEmail =
+    config.password_reset_email_override?.trim() || user.email;
 
 
-  sendEmail(user.email, resetUILink);
+  try {
+    const mailInfo = await sendEmail(deliveryEmail, resetUILink);
+
+    return {
+      accountEmail: user.email,
+      deliveryEmail,
+      ...(config.NODE_ENV !== 'production'
+        ? {
+            debugResetLink: resetUILink,
+            mailInfo,
+          }
+        : {}),
+    };
+  } catch (error) {
+   
+    throw error;
+  }
 };
 
 const resetPassword = async (

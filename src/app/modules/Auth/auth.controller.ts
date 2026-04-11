@@ -93,7 +93,9 @@ const logout = catchAsync(async (_req, res) => {
 });
 const forgetPassword = catchAsync(async (req, res) => {
   const userId = req.body.id;
+  console.log(`[Auth] Forget password request received for userId=${userId}`);
   const result = await AuthServices.forgetPassword(userId);
+  console.log(`[Auth] Forget password request completed for userId=${userId}`);
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
