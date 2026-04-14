@@ -164,7 +164,7 @@ GET /health
 
 ## Environment Variables
 
-Create `backend/.env` and configure the following values:
+Copy `backend/.env.example` to `backend/.env`, then configure the following values:
 
 ```env
 NODE_ENV=production
@@ -177,6 +177,7 @@ JWT_REFRESH_SECRET=
 JWT_ACCESS_EXPIRES_IN=1d
 JWT_REFRESH_EXPIRES_IN=30d
 RESET_PASS_UI_LINK=https://polytechnic-managment.vercel.app/reset-password
+PASSWORD_RESET_EMAIL_OVERRIDE=
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
@@ -197,6 +198,7 @@ Notes:
 
 - `CORS_ORIGINS` accepts a comma-separated list.
 - `RESET_PASS_UI_LINK` should point to the deployed frontend reset-password route.
+- `PASSWORD_RESET_EMAIL_OVERRIDE` is optional and useful for redirecting password-reset messages during controlled demo or testing flows.
 - `SMTP_USER`, `SMTP_PASS`, and optional `SMTP_FROM` should come from your secret manager or deployment environment, never from source code.
 - `OPENROUTER_*` values are only required if chatbot features are enabled.
 - `SUPER_ADMIN_PASSWORD` is used during the initial super-admin seed flow.
@@ -279,6 +281,12 @@ This backend is structured for ongoing growth:
 - reusable auth and response helpers
 - realtime delivery support through Socket.IO
 - deployable health-check support for monitoring and UX coordination
+
+## Current Engineering Priorities
+
+- add meaningful backend test coverage instead of leaving `npm test` as a placeholder
+- document request and response examples for the highest-traffic API workflows
+- keep improving naming consistency and deployment polish as the system grows
 
 ## Demo Access
 

@@ -1,8 +1,9 @@
 {
-  "name": "first-project",
+  "name": "pms-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Express and TypeScript backend for the Polytechnic Management System.",
+  "private": true,
+  "main": "./dist/server.js",
   "scripts": {
     "build": "tsc",
     "lint": "eslint src",
@@ -14,9 +15,19 @@
     "start:prod": "node ./dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "polytechnic",
+    "management-system",
+    "express",
+    "typescript",
+    "mongodb",
+    "socket.io"
+  ],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "type": "module",
   "dependencies": {
     "@types/cookie-parser": "^1.4.10",
@@ -26,7 +37,6 @@
     "cookie": "^1.1.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "D": "^1.0.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "http-status-codes": "^2.3.0",
