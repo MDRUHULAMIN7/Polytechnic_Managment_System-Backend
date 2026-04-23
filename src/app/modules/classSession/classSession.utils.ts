@@ -1,7 +1,11 @@
 import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
 import { Instructor } from '../Instructor/Instructor.model.js';
-import type { TDays } from '../OfferedSubject/OfferedSubject.interface.js';
+import type {
+  TDays,
+  TOfferedSubjectClassType,
+  TScheduleBlock,
+} from '../OfferedSubject/OfferedSubject.interface.js';
 import { Student } from '../student/student.model.js';
 import type { TClassSession, TFilterOption, TSemesterRegistrationOptionSource } from './classSession.interface.js';
 import { ClassSession } from './classSession.model.js';
@@ -187,9 +191,10 @@ export const buildSessionQuery = (filter: Record<string, unknown>) => {
   return ClassSession.find(filter)
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
     .populate('academicDepartment', 'name')
     .populate('semesterRegistration', 'status shift startDate endDate')
-    .populate('offeredSubject', 'section days startTime endTime')
+    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
     .sort({ date: 1, startTime: 1 });
 };
 
@@ -225,43 +230,88 @@ export const buildClassSessionSeeds = async (
   const totalStudents = await countEnrolledStudentsForOfferedSubject(
     offeredSubjectId,
   );
-  const selectedDays = new Set(offeredSubject.days);
   const startDate = normalizeUtcDate(semesterRegistration.startDate);
   const endDate = normalizeUtcDate(semesterRegistration.endDate);
   const sessions: Array<Partial<TClassSession>> = [];
 
+  const resolvedScheduleBlocks: Array<{
+    day: TDays;
+    room?: TScheduleBlock['room'];
+    classType?: TOfferedSubjectClassType;
+    startPeriod?: number;
+    periodCount?: number;
+    periodNumbers?: number[];
+    startTimeSnapshot: string;
+    endTimeSnapshot: string;
+  }> = offeredSubject.scheduleBlocks?.length
+    ? offeredSubject.scheduleBlocks.map((block) => ({
+        day: block.day,
+        room: block.room,
+        classType: block.classType,
+        startPeriod: block.startPeriod,
+        periodCount: block.periodCount,
+        periodNumbers: block.periodNumbers,
+        startTimeSnapshot: block.startTimeSnapshot,
+        endTimeSnapshot: block.endTimeSnapshot,
+      }))
+    : (offeredSubject.days ?? []).map((day) => ({
+        day,
+        startTimeSnapshot: offeredSubject.startTime,
+        endTimeSnapshot: offeredSubject.endTime,
+      }));
+
+  if (!resolvedScheduleBlocks.length) {
+    return [];
+  }
+
   let current = new Date(startDate);
-  let sessionNumber = 1;
 
   while (current.getTime() <= endDate.getTime()) {
     const day = getUtcDayLabel(current);
 
-    if (selectedDays.has(day)) {
-      sessions.push({
-        offeredSubject: offeredSubject._id,
-        semesterRegistration: offeredSubject.semesterRegistration,
-        academicSemester: offeredSubject.academicSemester,
-        academicDepartment: offeredSubject.academicDepartment,
-        subject: offeredSubject.subject,
-        instructor: offeredSubject.instructor,
-        sessionNumber,
-        date: new Date(current),
-        day,
-        startTime: offeredSubject.startTime,
-        endTime: offeredSubject.endTime,
-        totalStudents,
-        presentCount: 0,
-        absentCount: 0,
-        leaveCount: 0,
-        status: 'SCHEDULED',
+    resolvedScheduleBlocks
+      .filter((block) => block.day === day)
+      .forEach((block) => {
+        sessions.push({
+          offeredSubject: offeredSubject._id,
+          semesterRegistration: offeredSubject.semesterRegistration,
+          academicSemester: offeredSubject.academicSemester,
+          academicDepartment: offeredSubject.academicDepartment,
+          subject: offeredSubject.subject,
+          instructor: offeredSubject.instructor,
+          room: block.room,
+          classType: block.classType,
+          date: new Date(current),
+          day,
+          startPeriod: block.startPeriod,
+          periodCount: block.periodCount,
+          periodNumbers: block.periodNumbers ?? [],
+          startTime: block.startTimeSnapshot,
+          endTime: block.endTimeSnapshot,
+          totalStudents,
+          presentCount: 0,
+          absentCount: 0,
+          leaveCount: 0,
+          status: 'SCHEDULED',
+        });
       });
-
-      sessionNumber += 1;
-    }
 
     current = new Date(current);
     current.setUTCDate(current.getUTCDate() + 1);
   }
 
-  return sessions;
+  return sessions
+    .sort((left, right) => {
+      const leftDate = new Date(left.date as Date).getTime();
+      const rightDate = new Date(right.date as Date).getTime();
+      if (leftDate !== rightDate) {
+        return leftDate - rightDate;
+      }
+
+      return String(left.startTime ?? '').localeCompare(String(right.startTime ?? ''));
+    })
+    .map((session, index) => ({
+      ...session,
+      sessionNumber: index + 1,
+    }));
 };

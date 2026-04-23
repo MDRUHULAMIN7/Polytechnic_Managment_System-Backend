@@ -18,6 +18,8 @@ import { StudentAttendanceRoutes } from '../modules/studentAttendance/studentAtt
 import { NoticeRoutes } from '../modules/notice/notice.route.js';
 import { NotificationRoutes } from '../modules/notification/notification.route.js';
 import { ChatbotRoutes } from '../modules/chatbot/chatbot.route.js';
+import { RoomRoutes } from '../modules/room/room.route.js';
+import { PeriodConfigRoutes } from '../modules/periodConfig/periodConfig.route.js';
 
 const router = Router();
 
@@ -97,6 +99,14 @@ const moduleRoutes = [
   {
     path: '/chatbot',
     route: ChatbotRoutes,
+  },
+  {
+    path: '/rooms',
+    route: RoomRoutes,
+  },
+  {
+    path: '/period-configs',
+    route: PeriodConfigRoutes,
   },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

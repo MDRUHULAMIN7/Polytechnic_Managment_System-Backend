@@ -1,8 +1,9 @@
 import mongoose, { Schema } from 'mongoose';
-import { Days } from './OfferedSubject.constant.js';
+import { Days, OfferedSubjectClassTypes } from './OfferedSubject.constant.js';
 import {
   OfferedSubjectMarkingStatuses,
   type TOfferedSubject,
+  type TScheduleBlock,
 } from './OfferedSubject.interface.js';
 import {
   AssessmentBuckets,
@@ -35,6 +36,51 @@ const assessmentComponentSnapshotSchema = new Schema(
     isRequired: { type: Boolean, default: true },
   },
   { _id: false },
+);
+
+const scheduleBlockSchema = new Schema<TScheduleBlock>(
+  {
+    classType: {
+      type: String,
+      enum: OfferedSubjectClassTypes,
+      required: true,
+    },
+    day: {
+      type: String,
+      enum: Days,
+      required: true,
+    },
+    room: {
+      type: Schema.Types.ObjectId,
+      ref: 'Room',
+      required: true,
+    },
+    startPeriod: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    periodCount: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    periodNumbers: {
+      type: [Number],
+      default: [],
+    },
+    startTimeSnapshot: {
+      type: String,
+      required: true,
+    },
+    endTimeSnapshot: {
+      type: String,
+      required: true,
+    },
+  },
+  {
+    _id: false,
+  },
 );
 
 const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
@@ -91,6 +137,10 @@ const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
       type: String,
       required: true,
     },
+    scheduleBlocks: {
+      type: [scheduleBlockSchema],
+      default: [],
+    },
     markingSchemeSnapshot: {
       type: markingSchemeSnapshotSchema,
       required: true,
@@ -122,6 +172,9 @@ offeredSubjectSchema.index(
   { semesterRegistration: 1, subject: 1 },
   { unique: true },
 );
+offeredSubjectSchema.index({ semesterRegistration: 1, instructor: 1 });
+offeredSubjectSchema.index({ semesterRegistration: 1, academicDepartment: 1 });
+offeredSubjectSchema.index({ 'scheduleBlocks.room': 1 });
 
 export const OfferedSubject = mongoose.model<TOfferedSubject>(
   'OfferedSubject',

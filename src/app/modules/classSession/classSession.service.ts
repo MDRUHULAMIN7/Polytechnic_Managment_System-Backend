@@ -35,6 +35,19 @@ function logRealtimeError(action: string, error: unknown) {
   process.stderr.write(`Realtime notification failed for ${action}: ${detail}\n`);
 }
 
+const buildSessionIdentityKey = (payload: {
+  date: Date | string;
+  startTime?: string;
+  room?: { toString(): string } | string | null;
+}) =>
+  [
+    formatUtcDateKey(new Date(payload.date)),
+    payload.startTime ?? '',
+    typeof payload.room === 'string'
+      ? payload.room
+      : payload.room?.toString?.() ?? '',
+  ].join(':');
+
 const getOfferedSubjectIdsForCurriculum = async (curriculumId: string) => {
   const curriculum = await Curriculum.findById(curriculumId).select(
     'academicDepartment academicSemester semisterRegistration subjects',
@@ -85,17 +98,21 @@ const syncSingleOfferedSubjectClassSessionsIntoDB = async (
 
   const existingSessions = await ClassSession.find({
     offeredSubject: offeredSubjectId,
-  }).select('_id date status');
+  }).select('_id date status startTime room');
 
   const existingDateKeys = new Set(
-    existingSessions.map((item) => formatUtcDateKey(item.date)),
+    existingSessions.map((item) => buildSessionIdentityKey(item)),
   );
   const existingSessionMap = new Map(
-    existingSessions.map((item) => [formatUtcDateKey(item.date), item]),
+    existingSessions.map((item) => [buildSessionIdentityKey(item), item]),
   );
 
   const missingSessions = sessions.filter((session) => {
-    return !existingDateKeys.has(formatUtcDateKey(session.date as Date));
+    return !existingDateKeys.has(
+      buildSessionIdentityKey(
+        session as { date: Date; startTime?: string; room?: string },
+      ),
+    );
   });
 
   if (missingSessions.length) {
@@ -105,7 +122,11 @@ const syncSingleOfferedSubjectClassSessionsIntoDB = async (
   const resyncableStatuses = new Set(['SCHEDULED', 'MISSED', 'CANCELLED']);
   const updates = sessions
     .map((session) => {
-      const existing = existingSessionMap.get(formatUtcDateKey(session.date as Date));
+      const existing = existingSessionMap.get(
+        buildSessionIdentityKey(
+          session as { date: Date; startTime?: string; room?: string },
+        ),
+      );
       if (!existing || !resyncableStatuses.has(existing.status)) {
         return null;
       }
@@ -120,8 +141,13 @@ const syncSingleOfferedSubjectClassSessionsIntoDB = async (
               academicDepartment: session.academicDepartment,
               subject: session.subject,
               instructor: session.instructor,
+              room: session.room,
+              classType: session.classType,
               sessionNumber: session.sessionNumber,
               day: session.day,
+              startPeriod: session.startPeriod,
+              periodCount: session.periodCount,
+              periodNumbers: session.periodNumbers,
               startTime: session.startTime,
               endTime: session.endTime,
               totalStudents: session.totalStudents,
@@ -329,7 +355,8 @@ const getInstructorClassSessionDetailsFromDB = async (
       ClassSession.findById(classSession._id)
         .populate('subject', 'title code')
         .populate('instructor', 'id name designation')
-        .populate('offeredSubject', 'section days startTime endTime')
+        .populate('room', 'roomName roomNumber buildingNumber capacity')
+        .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
         .populate('semesterRegistration', 'status shift startDate endDate'),
       EnrolledSubject.find({
         offeredSubject: classSession.offeredSubject,
@@ -418,7 +445,8 @@ const startClassSessionIntoDB = async (
   )
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
-    .populate('offeredSubject', 'section days startTime endTime');
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
+    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
 
   if (result) {
     void NotificationService.notifyClassStarted(result).catch((error) =>
@@ -474,7 +502,8 @@ const completeClassSessionIntoDB = async (
   )
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
-    .populate('offeredSubject', 'section days startTime endTime');
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
+    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
 
   if (result) {
     void NotificationService.notifyClassCompleted(result).catch((error) =>
@@ -536,7 +565,8 @@ const rescheduleClassSessionIntoDB = async (
   )
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
-    .populate('offeredSubject', 'section days startTime endTime');
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
+    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
 
   if (result) {
     void NotificationService.notifyClassCancelled(result).catch((error) =>
@@ -578,7 +608,8 @@ const cancelClassSessionIntoDB = async (classSessionId: string) => {
   )
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
-    .populate('offeredSubject', 'section days startTime endTime');
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
+    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
 
   return result;
 };
@@ -592,7 +623,8 @@ const getStudentClassSessionDetailsFromDB = async (
   const classSession = await ClassSession.findById(classSessionId)
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation email')
-    .populate('offeredSubject', 'section days startTime endTime')
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
+    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
     .populate('semesterRegistration', 'status shift startDate endDate');
 
   if (!classSession) {
@@ -625,7 +657,8 @@ const getSingleClassSessionFromDB = async (classSessionId: string) => {
   const classSession = await ClassSession.findById(classSessionId)
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation email')
-    .populate('offeredSubject', 'section days startTime endTime')
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
+    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
     .populate('semesterRegistration', 'status shift startDate endDate')
     .populate('academicDepartment', 'name');
 
@@ -740,6 +773,7 @@ const getRoleDashboardSummaryFromDB = async (
     })
       .populate('subject', 'title code')
       .populate('instructor', 'id name designation')
+      .populate('room', 'roomName roomNumber buildingNumber capacity')
       .sort({ startTime: 1 });
 
     return {
@@ -759,6 +793,7 @@ const getRoleDashboardSummaryFromDB = async (
   })
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
+    .populate('room', 'roomName roomNumber buildingNumber capacity')
     .populate('academicDepartment', 'name')
     .sort({ startTime: 1 });
 

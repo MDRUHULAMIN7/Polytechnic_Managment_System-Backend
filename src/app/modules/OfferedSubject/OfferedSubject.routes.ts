@@ -23,6 +23,15 @@ router.get(
   OfferedSubjectControllers.getMyOfferedSubject,
 );
 
+router.post(
+  '/preview-conflicts',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  validateRequest(
+    OfferedSubjectValidations.previewOfferedSubjectConflictValidationSchema,
+  ),
+  OfferedSubjectControllers.previewOfferedSubjectConflicts,
+);
+
 router.get(
   '/:id',
   auth(

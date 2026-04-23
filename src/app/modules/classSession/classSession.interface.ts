@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import type { TDays } from '../OfferedSubject/OfferedSubject.interface.js';
+import type { TOfferedSubjectClassType } from '../OfferedSubject/OfferedSubject.interface.js';
 
 export const ClassSessionStatus = [
   'SCHEDULED',
@@ -18,9 +19,14 @@ export type TClassSession = {
   academicDepartment: Types.ObjectId;
   subject: Types.ObjectId;
   instructor: Types.ObjectId;
+  room?: Types.ObjectId;
+  classType?: TOfferedSubjectClassType;
   sessionNumber: number;
   date: Date;
   day: TDays;
+  startPeriod?: number;
+  periodCount?: number;
+  periodNumbers?: number[];
   startTime: string;
   endTime: string;
   topic?: string;

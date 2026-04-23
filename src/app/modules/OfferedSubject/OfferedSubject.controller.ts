@@ -62,6 +62,19 @@ const getSingleOfferedSubjects = catchAsync(
   },
 );
 
+const previewOfferedSubjectConflicts = catchAsync(async (req, res) => {
+  const result = await OfferedSubjectServices.previewOfferedSubjectConflictsIntoDB(
+    req.body,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Offered subject conflict preview generated successfully',
+    data: result,
+  });
+});
+
 const updateOfferedSubject = catchAsync(async (req, res) => {
   const { id } = req.params;
 
@@ -105,6 +118,7 @@ export const OfferedSubjectControllers = {
   getAllOfferedSubjects,
   getMyOfferedSubject ,
   getSingleOfferedSubjects,
+  previewOfferedSubjectConflicts,
   updateOfferedSubject,
   deleteOfferedSubjectFromDB,
 };

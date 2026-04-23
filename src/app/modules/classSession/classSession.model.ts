@@ -35,6 +35,14 @@ const classSessionSchema = new Schema<TClassSession>(
       required: true,
       ref: 'Instructor',
     },
+    room: {
+      type: Schema.Types.ObjectId,
+      ref: 'Room',
+    },
+    classType: {
+      type: String,
+      enum: ['theory', 'practical', 'tutorial'],
+    },
     sessionNumber: {
       type: Number,
       required: true,
@@ -48,6 +56,18 @@ const classSessionSchema = new Schema<TClassSession>(
       type: String,
       enum: Days,
       required: true,
+    },
+    startPeriod: {
+      type: Number,
+      min: 1,
+    },
+    periodCount: {
+      type: Number,
+      min: 1,
+    },
+    periodNumbers: {
+      type: [Number],
+      default: [],
     },
     startTime: {
       type: String,
@@ -112,7 +132,10 @@ const classSessionSchema = new Schema<TClassSession>(
   },
 );
 
-classSessionSchema.index({ offeredSubject: 1, date: 1 }, { unique: true });
+classSessionSchema.index(
+  { offeredSubject: 1, date: 1, startTime: 1, room: 1 },
+  { unique: true },
+);
 classSessionSchema.index({ instructor: 1, date: 1, status: 1 });
 classSessionSchema.index({ date: 1, status: 1 });
 classSessionSchema.index({ semesterRegistration: 1, status: 1 });
