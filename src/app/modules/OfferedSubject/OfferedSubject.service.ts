@@ -12,6 +12,10 @@ import QueryBuilder from "../../../builder/QueryBuilder.js";
 import { Student } from "../student/student.model.js";
 import type { TUserRole } from "../user/user.interface.js";
 import { NotificationService } from "../notification/notification.service.js";
+import {
+  cloneAssessmentComponents,
+  cloneMarkingScheme,
+} from '../subject/subject.marking.js';
 
 const resolveInstructorIdFromUserId = async (userId: string) => {
   const instructor = await Instructor.findOne({ id: userId }).select("_id");
@@ -173,6 +177,12 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
   const result = await OfferedSubject.create({
     ...payload,
     academicSemester,
+    markingSchemeSnapshot: cloneMarkingScheme(isSubjectExits.markingScheme),
+    assessmentComponentsSnapshot: cloneAssessmentComponents(
+      isSubjectExits.assessmentComponents,
+    ),
+    releasedComponentCodes: [],
+    markingStatus: 'NOT_STARTED',
   });
 
   const populatedResult = await OfferedSubject.findById(result._id)
@@ -228,7 +238,7 @@ const getAllOfferedSubjectsFromDB = async (
       })
       .populate('academicSemester', 'name year')
       .populate('academicDepartment', 'name')
-      .populate('subject', 'title')
+      .populate('subject', 'title code credits subjectType markingScheme')
       .populate('instructor', 'id name designation'),
     queryObj,
   )

@@ -8,19 +8,37 @@ const createEnrolledSubjectValidationZodSchema = z.object({
 
 const updateEnrolledSubjectMarksValidationZodSchema = z.object({
   body: z.object({
-    semesterRegistration: z.string(),
     offeredSubject: z.string(),
     student: z.string(),
-    subjectMarks: z.object({
-      classTest1: z.number().min(0).max(10).optional(),
-      midTerm: z.number().min(0).max(30).optional(),
-      classTest2: z.number().min(0).max(10).optional(),
-      finalTerm: z.number().min(0).max(90).optional(),
-    }),
+    entries: z
+      .array(
+        z.object({
+          componentCode: z.string().trim().min(1),
+          obtainedMarks: z.number().min(0).nullable(),
+          remarks: z.string().trim().optional(),
+        }),
+      )
+      .min(1),
+    reason: z.string().trim().optional(),
+  }),
+});
+
+const releaseEnrolledSubjectComponentValidationZodSchema = z.object({
+  body: z.object({
+    offeredSubject: z.string(),
+    componentCode: z.string().trim().min(1),
+  }),
+});
+
+const publishFinalResultValidationZodSchema = z.object({
+  body: z.object({
+    offeredSubject: z.string(),
   }),
 });
 
 export const EnrolledSubjectValidations = {
   createEnrolledSubjectValidationZodSchema,
   updateEnrolledSubjectMarksValidationZodSchema,
+  releaseEnrolledSubjectComponentValidationZodSchema,
+  publishFinalResultValidationZodSchema,
 };

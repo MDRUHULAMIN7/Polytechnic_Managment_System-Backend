@@ -3,25 +3,31 @@ import auth from '../../middleware/auth.js';
 import validateRequest from '../../middleware/validateRequest.js';
 import { EnrolledSubjectValidations } from './enrolledSubject.validation.js';
 import { EnrolledSubjectControllers } from './enrolledSubject.controller.js';
-
+import { USER_ROLE } from '../user/user.constant.js';
 
 const router = express.Router();
 
 router.get(
   '/',
-  auth('admin', 'instructor'),
+  auth(USER_ROLE.admin, USER_ROLE.instructor, USER_ROLE.superAdmin),
   EnrolledSubjectControllers.getAllEnrolledSubjects,
 );
 
 router.get(
   '/my-enrolled-subjects',
-  auth('student'),
+  auth(USER_ROLE.student),
   EnrolledSubjectControllers.getMyEnrolledSubjects,
+);
+
+router.get(
+  '/offered-subject/:offeredSubjectId/mark-sheet',
+  auth(USER_ROLE.admin, USER_ROLE.instructor, USER_ROLE.superAdmin),
+  EnrolledSubjectControllers.getOfferedSubjectMarkSheet,
 );
 
 router.post(
   '/create-enrolled-subject',
-  auth('student'),
+  auth(USER_ROLE.student),
   validateRequest(
     EnrolledSubjectValidations.createEnrolledSubjectValidationZodSchema,
   ),
@@ -30,11 +36,29 @@ router.post(
 
 router.patch(
   '/update-enrolled-subject-marks',
-  auth('instructor'),
+  auth(USER_ROLE.instructor, USER_ROLE.admin, USER_ROLE.superAdmin),
   validateRequest(
     EnrolledSubjectValidations.updateEnrolledSubjectMarksValidationZodSchema,
   ),
-  EnrolledSubjectControllers.updateEnrolledSubjectMarks,
+  EnrolledSubjectControllers.upsertEnrolledSubjectMarks,
+);
+
+router.patch(
+  '/release-component',
+  auth(USER_ROLE.instructor, USER_ROLE.admin, USER_ROLE.superAdmin),
+  validateRequest(
+    EnrolledSubjectValidations.releaseEnrolledSubjectComponentValidationZodSchema,
+  ),
+  EnrolledSubjectControllers.releaseOfferedSubjectComponent,
+);
+
+router.patch(
+  '/publish-final-result',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  validateRequest(
+    EnrolledSubjectValidations.publishFinalResultValidationZodSchema,
+  ),
+  EnrolledSubjectControllers.publishOfferedSubjectFinalResult,
 );
 
 export const EnrolledSubjectRoutes = router;

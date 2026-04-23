@@ -1,5 +1,23 @@
 import type { TErrorSource, TGenericErrorResponse } from "../../interface/error.js";
 
+const fieldLabelMap: Record<string, string> = {
+  code: 'Code',
+  credits: 'Credits',
+  email: 'Email',
+  id: 'ID',
+  title: 'Title',
+};
+
+function formatFieldLabel(field: string) {
+  return (
+    fieldLabelMap[field] ??
+    field
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[_-]+/g, ' ')
+      .replace(/^\w/, (char) => char.toUpperCase())
+  );
+}
+
 const handleDuplicateError = (err: any): TGenericErrorResponse => {
   const keyValue =
     (err && typeof err === 'object' && err.keyValue) || undefined;
@@ -14,12 +32,9 @@ const handleDuplicateError = (err: any): TGenericErrorResponse => {
   }
 
   const errorSources: TErrorSource[] = entries.length
-    ? entries.map(([field, value]) => ({
+    ? entries.map(([field]) => ({
         path: field,
-        message:
-          value === undefined || value === null
-            ? `${field} already exists `
-            : `${field} ${value} already exists `,
+        message: `${formatFieldLabel(field)} already exists. Please use a different value.`,
       }))
     : [
         {

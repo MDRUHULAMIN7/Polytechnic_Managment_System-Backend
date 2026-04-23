@@ -11,6 +11,7 @@ import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
 import { SemesterEnrollment } from './semesterEnrollment.model.js';
 import type { TUserRole } from '../user/user.interface.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
+import { buildEnrolledSubjectSeed } from '../enrolledSubject/enrolledSubject.utils.js';
 
 const getMissingOfferedSubjectReasons = async ({
   subjectIds,
@@ -348,17 +349,11 @@ const createSemesterEnrollmentIntoDB = async (
     }
 
     const enrolledSubjectPayload = selectedOfferedSubjects.map(
-      (offeredSubjectItem) => ({
-        semesterRegistration: offeredSubjectItem.semesterRegistration,
-        academicSemester: offeredSubjectItem.academicSemester,
-        academicInstructor: offeredSubjectItem.academicInstructor,
-        academicDepartment: offeredSubjectItem.academicDepartment,
-        offeredSubject: offeredSubjectItem._id,
-        subject: offeredSubjectItem.subject,
-        student: student._id,
-        instructor: offeredSubjectItem.instructor,
-        isEnrolled: true,
-      }),
+      (offeredSubjectItem) =>
+        buildEnrolledSubjectSeed({
+          offeredSubject: offeredSubjectItem,
+          student: student._id,
+        }),
     );
 
     const enrolledSubjects = await EnrolledSubject.insertMany(enrolledSubjectPayload, {

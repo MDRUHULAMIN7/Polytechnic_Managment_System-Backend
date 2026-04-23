@@ -1,4 +1,3 @@
-
 import mongoose from 'mongoose';
 import type { TSubject, TSubjectInstructor } from './subject.interface.js';
 import { Subject, SubjectInstructor } from './subject.model.js';
@@ -7,6 +6,8 @@ import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
 import { Instructor } from '../Instructor/Instructor.model.js';
 import type { TUserRole } from '../user/user.interface.js';
+import { normalizeMarkingPayload } from './subject.marking.js';
+import { buildSubjectSearchQuery } from './subject.utils.js';
 
 const resolveInstructorIdFromUserId = async (userId: string) => {
   const instructor = await Instructor.findOne({ id: userId }).select('_id');
@@ -18,10 +19,34 @@ const resolveInstructorIdFromUserId = async (userId: string) => {
   return instructor._id;
 };
 
+const ensureUniqueCredits = async (credits: number, excludeId?: string) => {
+  const existingSubject = await Subject.findOne({
+    credits,
+    ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+  }).select('_id');
+
+  if (existingSubject) {
+    throw new AppError(
+      StatusCodes.CONFLICT,
+      'Credits already exist. Please use a different credit value.',
+    );
+  }
+};
+
 // Create Subject
 const createSubjectIntoDB = async (payload: TSubject) => {
-  const result = await Subject.create(payload);
-  return result;  
+  await ensureUniqueCredits(payload.credits);
+
+  const normalizedMarkingPayload = normalizeMarkingPayload({
+    markingScheme: payload.markingScheme,
+    assessmentComponents: payload.assessmentComponents,
+  });
+
+  const result = await Subject.create({
+    ...payload,
+    ...normalizedMarkingPayload,
+  });
+  return result;
 };
 
 // Get All Subjects
@@ -30,27 +55,7 @@ const getAllSubjectsFromDB = async (
   userId?: string,
   role?: TUserRole,
 ) => {
-  const searchTerm = typeof query.searchTerm === 'string' ? query.searchTerm.trim() : '';
-  const searchConditions: Record<string, unknown>[] = [];
-  const notDeletedCondition = { isDeleted: { $ne: true } };
-  const queryObj = { ...query };
-
-  if (searchTerm) {
-    searchConditions.push(
-      { title: { $regex: searchTerm, $options: 'i' } },
-      { prefix: { $regex: searchTerm, $options: 'i' } },
-    );
-
-    const numericSearchTerm = Number(searchTerm);
-    if (!Number.isNaN(numericSearchTerm)) {
-      searchConditions.push({ code: numericSearchTerm });
-    }
-  }
-
-  const baseCriteria: Record<string, unknown> =
-    searchConditions.length > 0
-      ? { ...notDeletedCondition, $or: searchConditions }
-      : { ...notDeletedCondition };
+  const { baseCriteria, queryObj } = buildSubjectSearchQuery(query);
 
   if (queryObj.scope === 'my' && role === 'instructor' && userId) {
     const instructorId = await resolveInstructorIdFromUserId(userId);
@@ -91,19 +96,46 @@ const getSingleSubjectFromDB = async (id: string) => {
 
 // Update Subject
 const updateSubjectIntoDB = async (id: string, payload: Partial<TSubject>) => {
-  const { preRequisiteSubjects, ...subjectRemainingData } = payload;
+  const {
+    preRequisiteSubjects,
+    markingScheme,
+    assessmentComponents,
+    ...subjectRemainingData
+  } = payload;
   const session = await mongoose.startSession();
 
   try {
     session.startTransaction();
 
+    const existingSubject = await Subject.findById(id).session(session);
+
+    if (!existingSubject) {
+      throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found!');
+    }
+
+    if (typeof subjectRemainingData.credits === 'number') {
+      await ensureUniqueCredits(subjectRemainingData.credits, id);
+    }
+
+    let normalizedMarkingPayload = null;
+    if (markingScheme || assessmentComponents) {
+      normalizedMarkingPayload = normalizeMarkingPayload({
+        markingScheme: markingScheme ?? existingSubject.markingScheme,
+        assessmentComponents:
+          assessmentComponents ?? existingSubject.assessmentComponents,
+      });
+    }
+
     // Step 1: Update main subject fields
     const updatedSubject = await Subject.findByIdAndUpdate(
       id,
-      subjectRemainingData,
-      { new: true, runValidators: true, session }
+      {
+        ...subjectRemainingData,
+        ...(normalizedMarkingPayload ?? {}),
+      },
+      { new: true, runValidators: true, session },
     );
-   
+
     if (!updatedSubject) {
       throw new AppError(StatusCodes.BAD_REQUEST, 'Failed to update subject!');
     }
@@ -118,31 +150,33 @@ const updateSubjectIntoDB = async (id: string, payload: Partial<TSubject>) => {
         await Subject.findByIdAndUpdate(
           id,
           { $pull: { preRequisiteSubjects: { subject: { $in: deletedPreReqs } } } },
-          { session }
+          { session },
         );
       }
 
-      const newPreReqs = preRequisiteSubjects.filter((el) => el.subject && !el.isDeleted);
+      const newPreReqs = preRequisiteSubjects.filter(
+        (el) => el.subject && !el.isDeleted,
+      );
 
       if (newPreReqs.length > 0) {
         await Subject.findByIdAndUpdate(
           id,
           { $addToSet: { preRequisiteSubjects: { $each: newPreReqs } } },
-          { session }
+          { session },
         );
       }
     }
 
     await session.commitTransaction();
-    await session.endSession();
-
-    const result = await Subject.findById(id).populate('preRequisiteSubjects.subject');
-    return result;
-  } catch (err:any) {
+  } catch (err) {
     await session.abortTransaction();
+    throw err;
+  } finally {
     await session.endSession();
-    throw new AppError(StatusCodes.BAD_REQUEST,  err.message ||'Failed to update subject!');
   }
+
+  const result = await Subject.findById(id).populate('preRequisiteSubjects.subject');
+  return result;
 };
 
 // Delete Subject (Soft Delete)
@@ -154,13 +188,13 @@ const deleteSubjectFromDB = async (id: string) => {
 // Assign Instructors to Subject
 const assignInstructorsWithSubjectIntoDB = async (
   id: string,
-  payload: Partial<TSubjectInstructor>
+  payload: Partial<TSubjectInstructor>,
 ) => {
   const instructorIds = payload.instructors || [];
 
   if (instructorIds.length) {
     const invalidInstructorIds = instructorIds.filter(
-      (instructorId) => !mongoose.isValidObjectId(instructorId)
+      (instructorId) => !mongoose.isValidObjectId(instructorId),
     );
 
     if (invalidInstructorIds.length) {
@@ -175,12 +209,12 @@ const assignInstructorsWithSubjectIntoDB = async (
     }).select('_id');
 
     const existingInstructorIdSet = new Set(
-      existingInstructors.map((instructor) => instructor._id.toString())
+      existingInstructors.map((instructor) => instructor._id.toString()),
     );
 
     const missingInstructorIds = instructorIds.filter(
       (instructorId) =>
-        !existingInstructorIdSet.has(instructorId.toString())
+        !existingInstructorIdSet.has(instructorId.toString()),
     );
 
     if (missingInstructorIds.length) {
@@ -196,12 +230,12 @@ const assignInstructorsWithSubjectIntoDB = async (
 
     const assignedInstructorIdSet = new Set(
       (existingSubjectInstructor?.instructors || []).map((instructorId) =>
-        instructorId.toString()
-      )
+        instructorId.toString(),
+      ),
     );
 
     const alreadyAssignedInstructorIds = instructorIds.filter((instructorId) =>
-      assignedInstructorIdSet.has(instructorId.toString())
+      assignedInstructorIdSet.has(instructorId.toString()),
     );
 
     if (alreadyAssignedInstructorIds.length) {
@@ -218,7 +252,7 @@ const assignInstructorsWithSubjectIntoDB = async (
       subject: id,
       $addToSet: { instructors: { $each: payload.instructors || [] } },
     },
-    { upsert: true, new: true }
+    { upsert: true, new: true },
   );
   return result;
 };
@@ -232,12 +266,12 @@ const getInstructorWithSubjectFromDB = async (subjectId: string) => {
 // Remove Instructors from Subject
 const removeInstructorsFromSubjectFromDB = async (
   id: string,
-  payload: Partial<TSubjectInstructor>
+  payload: Partial<TSubjectInstructor>,
 ) => {
   const result = await SubjectInstructor.findByIdAndUpdate(
     id,
     { $pull: { instructors: { $in: payload.instructors || [] } } },
-    { new: true }
+    { new: true },
   );
   return result;
 };

@@ -1,30 +1,91 @@
 import mongoose from 'mongoose';
-import type { TEnrolledSubject } from './enrolledSubject.interface.js';
-import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
-import AppError from '../../errors/AppError.js';
 import { StatusCodes } from 'http-status-codes';
+import AppError from '../../errors/AppError.js';
+import type {
+  TEnrolledSubject,
+  TEnrolledSubjectAuditLog,
+  TEnrolledSubjectMarkEntry,
+} from './enrolledSubject.interface.js';
+import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
 import { Student } from '../student/student.model.js';
 import EnrolledSubject from './enrolledSubject.model.js';
 import { Subject } from '../subject/subject.model.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import { Instructor } from '../Instructor/Instructor.model.js';
-import {
-  calculateGradeAndPoints,
-  ENROLLED_SUBJECT_TOTAL_MARKS,
-} from './enrolledSubject.utils.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
+import type { TUserRole } from '../user/user.interface.js';
+import {
+  appendAuditLogs,
+  buildEnrolledSubjectSeed,
+  calculateGradeAndPoints,
+  calculateMarkSummary,
+  determineResultStatus,
+  getReleasedMarkEntries,
+} from './enrolledSubject.utils.js';
+
+type TMarkEntryInput = {
+  componentCode: string;
+  obtainedMarks: number | null;
+  remarks?: string;
+};
+
+const resolveActor = async (userId: string, role: TUserRole) => {
+  if (role === 'instructor') {
+    const instructor = await Instructor.findOne({ id: userId }, { _id: 1 });
+
+    if (!instructor) {
+      throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found !');
+    }
+
+    return {
+      actorRefId: instructor._id.toString(),
+      actorUserId: userId,
+      role,
+      instructorId: instructor._id,
+    };
+  }
+
+  return {
+    actorRefId: userId,
+    actorUserId: userId,
+    role,
+    instructorId: null,
+  };
+};
+
+const ensureOfferedSubjectAccess = async (
+  offeredSubjectId: string,
+  actor: Awaited<ReturnType<typeof resolveActor>>,
+) => {
+  const offeredSubject = await OfferedSubject.findById(offeredSubjectId)
+    .populate('subject', 'title code')
+    .populate('instructor', 'id name');
+
+  if (!offeredSubject) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Offered subject not found !');
+  }
+
+  if (
+    actor.role === 'instructor' &&
+    actor.instructorId &&
+    String(
+      typeof offeredSubject.instructor === 'object' &&
+        offeredSubject.instructor &&
+        '_id' in offeredSubject.instructor
+        ? offeredSubject.instructor._id
+        : offeredSubject.instructor,
+    ) !== actor.instructorId.toString()
+  ) {
+    throw new AppError(StatusCodes.FORBIDDEN, 'You are forbidden!');
+  }
+
+  return offeredSubject;
+};
 
 const createEnrolledSubjectIntoDB = async (
   userId: string,
   payload: TEnrolledSubject,
 ) => {
-  /**
-   * Step1: Check if the offered subject is exists
-   * Step2: Check if the student is already enrolled
-   * Step3: Check if the max credits exceed
-   * Step4: Create an enrolled subject
-   */
-
   const { offeredSubject } = payload;
 
   const isOfferedSubjectExists = await OfferedSubject.findById(offeredSubject);
@@ -42,6 +103,7 @@ const createEnrolledSubjectIntoDB = async (
   if (!student) {
     throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
   }
+
   const isStudentAlreadyEnrolled = await EnrolledSubject.findOne({
     semesterRegistration: isOfferedSubjectExists.semesterRegistration,
     offeredSubject,
@@ -52,7 +114,6 @@ const createEnrolledSubjectIntoDB = async (
     throw new AppError(StatusCodes.CONFLICT, 'Student is already enrolled !');
   }
 
-  // check total credits exceeds totalCredit
   const subject = await Subject.findById(isOfferedSubjectExists.subject);
   const currentCredit = subject?.credits;
 
@@ -94,7 +155,6 @@ const createEnrolledSubjectIntoDB = async (
     },
   ]);
 
-  // total enrolled credits + new enrolled subject credit > maxCredit
   const totalCredits =
     enrolledSubjects.length > 0 ? enrolledSubjects[0].totalEnrolledCredits : 0;
 
@@ -110,19 +170,12 @@ const createEnrolledSubjectIntoDB = async (
   try {
     session.startTransaction();
 
-    const result = await EnrolledSubject.create(
+    const [result] = await EnrolledSubject.insertMany(
       [
-        {
-          semesterRegistration: isOfferedSubjectExists.semesterRegistration,
-          academicSemester: isOfferedSubjectExists.academicSemester,
-          academicInstructor: isOfferedSubjectExists.academicInstructor,
-          academicDepartment: isOfferedSubjectExists.academicDepartment,
-          offeredSubject: offeredSubject,
-          subject: isOfferedSubjectExists.subject,
+        buildEnrolledSubjectSeed({
+          offeredSubject: isOfferedSubjectExists,
           student: student._id,
-          instructor: isOfferedSubjectExists.instructor,
-          isEnrolled: true,
-        },
+        }),
       ],
       { session },
     );
@@ -134,10 +187,13 @@ const createEnrolledSubjectIntoDB = async (
       );
     }
 
-    const maxCapacity = isOfferedSubjectExists.maxCapacity;
-    await OfferedSubject.findByIdAndUpdate(offeredSubject, {
-      maxCapacity: maxCapacity - 1,
-    });
+    await OfferedSubject.findByIdAndUpdate(
+      offeredSubject,
+      {
+        maxCapacity: isOfferedSubjectExists.maxCapacity - 1,
+      },
+      { session },
+    );
 
     await session.commitTransaction();
     await session.endSession();
@@ -149,104 +205,290 @@ const createEnrolledSubjectIntoDB = async (
     throw new Error(err);
   }
 };
-const updateEnrolledSubjectMarksIntoDB = async (
-  instructorId: string,
-  payload: Partial<TEnrolledSubject>,
+
+const upsertEnrolledSubjectMarksIntoDB = async (
+  userId: string,
+  role: TUserRole,
+  payload: {
+    offeredSubject: string;
+    student: string;
+    entries: TMarkEntryInput[];
+    reason?: string;
+  },
 ) => {
-  const { semesterRegistration, offeredSubject, student, subjectMarks } =
-    payload;
+  const actor = await resolveActor(userId, role);
+  await ensureOfferedSubjectAccess(payload.offeredSubject, actor);
 
-  const isSemesterRegistrationExists =
-    await SemesterRegistration.findById(semesterRegistration);
-
-  if (!isSemesterRegistrationExists) {
-    throw new AppError(
-      StatusCodes.NOT_FOUND,
-      'Semester registration not found !',
-    );
-  }
-
-  const isOfferedSubjectExists = await OfferedSubject.findById(offeredSubject);
-
-  if (!isOfferedSubjectExists) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Offered subject not found !');
-  }
-  const isStudentExists = await Student.findById(student);
-
-  if (!isStudentExists) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
-  }
-
-  const instructor = await Instructor.findOne({ id: instructorId }, { _id: 1 });
-
-  if (!instructor) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found !');
-  }
-
-  const isSubjectBelongToInstructor = await EnrolledSubject.findOne({
-    semesterRegistration,
-    offeredSubject,
-    student,
-    instructor: instructor._id,
+  const enrolledSubject = await EnrolledSubject.findOne({
+    offeredSubject: payload.offeredSubject,
+    student: payload.student,
   });
 
-  if (!isSubjectBelongToInstructor) {
-    throw new AppError(StatusCodes.FORBIDDEN, 'You are forbidden! !');
+  if (!enrolledSubject) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Enrolled subject not found !');
   }
 
-  const modifiedData: Record<string, unknown> = {};
+  const entryMap = new Map(
+    enrolledSubject.markEntries.map((entry) => [entry.componentCode, entry]),
+  );
+  const auditLogs: TEnrolledSubjectAuditLog[] = [];
+  let touchedAny = false;
 
-  const currentSubjectMarks = isSubjectBelongToInstructor.subjectMarks;
-  const mergedSubjectMarks = {
-    classTest1: subjectMarks?.classTest1 ?? currentSubjectMarks.classTest1,
-    midTerm: subjectMarks?.midTerm ?? currentSubjectMarks.midTerm,
-    classTest2: subjectMarks?.classTest2 ?? currentSubjectMarks.classTest2,
-    finalTerm: subjectMarks?.finalTerm ?? currentSubjectMarks.finalTerm,
-  };
+  for (const incoming of payload.entries) {
+    const existingEntry = entryMap.get(incoming.componentCode);
 
-  const isAnyFinalComponentUpdated = subjectMarks?.finalTerm !== undefined;
+    if (!existingEntry) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        `Assessment component not found: ${incoming.componentCode}`,
+      );
+    }
 
-  if (isAnyFinalComponentUpdated) {
-    const { classTest1, classTest2, midTerm, finalTerm } = mergedSubjectMarks;
+    if (
+      incoming.obtainedMarks !== null &&
+      incoming.obtainedMarks > existingEntry.fullMarks
+    ) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        `${existingEntry.componentTitle} can not exceed ${existingEntry.fullMarks}.`,
+      );
+    }
 
-    const totalMarks = classTest1 + classTest2 + midTerm + finalTerm;
+    if (
+      existingEntry.obtainedMarks === incoming.obtainedMarks &&
+      (incoming.remarks ?? existingEntry.remarks ?? '') ===
+        (existingEntry.remarks ?? '')
+    ) {
+      continue;
+    }
 
-    const result = calculateGradeAndPoints(
-      totalMarks,
-      ENROLLED_SUBJECT_TOTAL_MARKS,
+    auditLogs.push({
+      componentCode: existingEntry.componentCode,
+      componentTitle: existingEntry.componentTitle,
+      oldValue: existingEntry.obtainedMarks ?? null,
+      newValue: incoming.obtainedMarks,
+      reason: payload.reason ?? '',
+      actorId: actor.actorUserId,
+      actorRole: actor.role,
+      changedAt: new Date(),
+    });
+
+    existingEntry.obtainedMarks = incoming.obtainedMarks;
+    existingEntry.remarks = incoming.remarks ?? existingEntry.remarks ?? '';
+    existingEntry.lastUpdatedAt = new Date();
+    existingEntry.lastUpdatedBy = actor.actorUserId;
+    touchedAny = true;
+  }
+
+  if (!touchedAny) {
+    return enrolledSubject;
+  }
+
+  const recalculatedSummary = calculateMarkSummary(
+    enrolledSubject.markEntries,
+    enrolledSubject.markingSchemeSnapshot.totalMarks,
+  );
+  const gradeResult = calculateGradeAndPoints(
+    recalculatedSummary.total,
+    enrolledSubject.markingSchemeSnapshot.totalMarks,
+  );
+
+  enrolledSubject.markSummary = recalculatedSummary;
+  enrolledSubject.grade = gradeResult.grade as TEnrolledSubject['grade'];
+  enrolledSubject.gradePoints = gradeResult.gradePoints;
+  enrolledSubject.resultStatus = determineResultStatus(
+    enrolledSubject.markEntries,
+    enrolledSubject.finalResultPublishedAt,
+  );
+  enrolledSubject.auditLogs = appendAuditLogs(
+    enrolledSubject.auditLogs,
+    auditLogs,
+  );
+
+  await enrolledSubject.save();
+
+  await OfferedSubject.findByIdAndUpdate(payload.offeredSubject, {
+    markingStatus: 'ONGOING',
+  });
+
+  return enrolledSubject;
+};
+
+const releaseOfferedSubjectComponentIntoDB = async (
+  userId: string,
+  role: TUserRole,
+  payload: {
+    offeredSubject: string;
+    componentCode: string;
+  },
+) => {
+  const actor = await resolveActor(userId, role);
+  const offeredSubject = await ensureOfferedSubjectAccess(
+    payload.offeredSubject,
+    actor,
+  );
+
+  const component = offeredSubject.assessmentComponentsSnapshot.find(
+    (item) => item.code === payload.componentCode,
+  );
+
+  if (!component) {
+    throw new AppError(StatusCodes.BAD_REQUEST, 'Assessment component not found !');
+  }
+
+  const enrolledSubjects = await EnrolledSubject.find({
+    offeredSubject: payload.offeredSubject,
+  });
+
+  if (!enrolledSubjects.length) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'No enrolled students found for this offered subject.',
+    );
+  }
+
+  for (const enrolledSubject of enrolledSubjects) {
+    const targetEntry = enrolledSubject.markEntries.find(
+      (entry) => entry.componentCode === payload.componentCode,
     );
 
-    modifiedData.grade = result.grade;
-    modifiedData.gradePoints = result.gradePoints;
-    modifiedData.isCompleted = true;
-  }
-
-  if (subjectMarks && Object.keys(subjectMarks).length) {
-    for (const [key, value] of Object.entries(subjectMarks)) {
-      modifiedData[`subjectMarks.${key}`] = value;
+    if (!targetEntry || targetEntry.obtainedMarks === null) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        `All students must have ${component.title} marks before release.`,
+      );
     }
   }
 
-  const result = await EnrolledSubject.findByIdAndUpdate(
-    isSubjectBelongToInstructor._id,
-    modifiedData,
+  const now = new Date();
+
+  for (const enrolledSubject of enrolledSubjects) {
+    const targetEntry = enrolledSubject.markEntries.find(
+      (entry) => entry.componentCode === payload.componentCode,
+    ) as TEnrolledSubjectMarkEntry;
+
+    targetEntry.isReleased = true;
+    targetEntry.releasedAt = now;
+    enrolledSubject.markSummary = calculateMarkSummary(
+      enrolledSubject.markEntries,
+      enrolledSubject.markingSchemeSnapshot.totalMarks,
+    );
+    enrolledSubject.resultStatus = determineResultStatus(
+      enrolledSubject.markEntries,
+      enrolledSubject.finalResultPublishedAt,
+    );
+    await enrolledSubject.save();
+  }
+
+  const nextReleasedCodes = Array.from(
+    new Set([...offeredSubject.releasedComponentCodes, payload.componentCode]),
+  );
+
+  const nextMarkingStatus =
+    offeredSubject.finalResultPublishedAt || nextReleasedCodes.length === 0
+      ? offeredSubject.markingStatus
+      : 'PARTIALLY_RELEASED';
+
+  await OfferedSubject.findByIdAndUpdate(payload.offeredSubject, {
+    releasedComponentCodes: nextReleasedCodes,
+    markingStatus: nextMarkingStatus,
+  });
+
+  return { componentCode: payload.componentCode };
+};
+
+const publishOfferedSubjectFinalResultIntoDB = async (
+  userId: string,
+  role: TUserRole,
+  payload: {
+    offeredSubject: string;
+  },
+) => {
+  if (role !== 'admin' && role !== 'superAdmin') {
+    throw new AppError(
+      StatusCodes.FORBIDDEN,
+      'Only admin can publish final results.',
+    );
+  }
+
+  const actor = await resolveActor(userId, role);
+  const offeredSubject = await ensureOfferedSubjectAccess(
+    payload.offeredSubject,
+    actor,
+  );
+
+  const enrolledSubjects = await EnrolledSubject.find({
+    offeredSubject: payload.offeredSubject,
+  });
+
+  if (!enrolledSubjects.length) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'No enrolled students found for this offered subject.',
+    );
+  }
+
+  for (const enrolledSubject of enrolledSubjects) {
+    const missingRequired = enrolledSubject.markEntries.some(
+      (entry) => entry.isRequired && entry.obtainedMarks === null,
+    );
+
+    if (missingRequired) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        'All required marks must be entered before final publish.',
+      );
+    }
+  }
+
+  const publishedAt = new Date();
+
+  await EnrolledSubject.updateMany(
+    { offeredSubject: payload.offeredSubject },
     {
-      new: true,
-      runValidators: true,
+      finalResultPublishedAt: publishedAt,
+      isCompleted: true,
+      resultStatus: 'FINAL_PUBLISHED',
     },
   );
 
-  return result;
+  await OfferedSubject.findByIdAndUpdate(payload.offeredSubject, {
+    finalResultPublishedAt: publishedAt,
+    markingStatus: 'FINAL_PUBLISHED',
+  });
+
+  return { publishedAt };
+};
+
+const getOfferedSubjectMarkSheetFromDB = async (
+  offeredSubjectId: string,
+  userId: string,
+  role: TUserRole,
+) => {
+  const actor = await resolveActor(userId, role);
+  const offeredSubject = await ensureOfferedSubjectAccess(offeredSubjectId, actor);
+
+  const enrolledSubjects = await EnrolledSubject.find({
+    offeredSubject: offeredSubjectId,
+  })
+    .populate('student', 'id name')
+    .sort({ 'student.id': 1, _id: 1 })
+    .lean();
+
+  return {
+    offeredSubject,
+    enrolledSubjects,
+  };
 };
 
 const getAllEnrolledSubjectsFromDB = async (query: Record<string, unknown>) => {
   const enrolledSubjectQuery = new QueryBuilder(
     EnrolledSubject.find()
       .select(
-        ' subject student instructor subjectMarks grade gradePoints isCompleted',
+        'subject student instructor markSummary resultStatus grade gradePoints finalResultPublishedAt isCompleted',
       )
-      .populate('academicSemester',"name year startMonth")
-      .populate('subject', 'title code credits')
+      .populate('academicSemester', 'name year startMonth')
+      .populate('subject', 'title code credits subjectType markingScheme')
       .populate('student', 'id name')
       .populate('instructor', 'id name designation')
       .lean(),
@@ -280,17 +522,42 @@ const getMyEnrolledSubjectsFromDB = async (userId: string) => {
       'academicSemester status shift startDate endDate totalCredit',
     )
     .populate('academicSemester', 'name year')
-    .populate('offeredSubject', 'section days startTime endTime')
-    .populate('subject', 'title code credits regulation')
+    .populate(
+      'offeredSubject',
+      'section days startTime endTime releasedComponentCodes finalResultPublishedAt markingStatus',
+    )
+    .populate('subject', 'title code credits regulation subjectType markingScheme')
     .populate('instructor', 'id name designation email')
-    .sort('-_id');
+    .sort('-_id')
+    .lean();
 
-  return result;
+  return result.map((item) => {
+    const visibleEntries = getReleasedMarkEntries(item.markEntries);
+    const releasedSummary = calculateMarkSummary(
+      visibleEntries,
+      item.markingSchemeSnapshot.totalMarks,
+    );
+
+    return {
+      ...item,
+      markEntries: visibleEntries,
+      markSummary: item.finalResultPublishedAt ? item.markSummary : releasedSummary,
+      grade: item.finalResultPublishedAt ? item.grade : 'NA',
+      gradePoints: item.finalResultPublishedAt ? item.gradePoints : 0,
+      isCompleted: Boolean(item.finalResultPublishedAt),
+      resultStatus: item.finalResultPublishedAt
+        ? item.resultStatus
+        : determineResultStatus(visibleEntries, null),
+    };
+  });
 };
 
 export const EnrolledSubjectServices = {
   createEnrolledSubjectIntoDB,
-  updateEnrolledSubjectMarksIntoDB,
+  upsertEnrolledSubjectMarksIntoDB,
+  releaseOfferedSubjectComponentIntoDB,
+  publishOfferedSubjectFinalResultIntoDB,
+  getOfferedSubjectMarkSheetFromDB,
   getAllEnrolledSubjectsFromDB,
   getMyEnrolledSubjectsFromDB,
 };

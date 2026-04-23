@@ -1,8 +1,32 @@
-export const ENROLLED_SUBJECT_TOTAL_MARKS = 140;
+import { Types } from 'mongoose';
+import type { TOfferedSubject } from '../OfferedSubject/OfferedSubject.interface.js';
+import type {
+  TEnrolledSubjectAuditLog,
+  TEnrolledSubjectMarkEntry,
+  TEnrolledSubjectMarkSummary,
+  TEnrolledSubjectResultStatus,
+} from './enrolledSubject.interface.js';
+
+export const DEFAULT_MARK_SUMMARY: TEnrolledSubjectMarkSummary = {
+  theoryContinuous: 0,
+  theoryFinal: 0,
+  practicalContinuous: 0,
+  practicalFinal: 0,
+  releasedTheoryContinuous: 0,
+  releasedTheoryFinal: 0,
+  releasedPracticalContinuous: 0,
+  releasedPracticalFinal: 0,
+  total: 0,
+  releasedTotal: 0,
+  totalMarks: 0,
+  percentage: 0,
+  releasedPercentage: 0,
+  releasedMarks: 0,
+};
 
 export const calculateGradeAndPoints = (
   obtainedMarks: number,
-  totalSubjectMarks: number = ENROLLED_SUBJECT_TOTAL_MARKS,
+  totalSubjectMarks: number,
 ) => {
   let result = {
     grade: 'NA',
@@ -19,13 +43,6 @@ export const calculateGradeAndPoints = (
 
   const percentage = (obtainedMarks / totalSubjectMarks) * 100;
 
-  /**
-   * Fail below 40% of total subject marks
-   * 40-49 D
-   * 50-59 C
-   * 60-79 B
-   * 80-100 A
-   */
   if (percentage < 40) {
     result = {
       grade: 'F',
@@ -55,3 +72,162 @@ export const calculateGradeAndPoints = (
 
   return result;
 };
+
+export function initializeMarkEntriesFromOfferedSubject(
+  offeredSubject: Pick<
+    TOfferedSubject,
+    'assessmentComponentsSnapshot'
+  >,
+): TEnrolledSubjectMarkEntry[] {
+  return offeredSubject.assessmentComponentsSnapshot.map((component) => ({
+    componentCode: component.code,
+    componentTitle: component.title,
+    bucket: component.bucket,
+    componentType: component.componentType,
+    fullMarks: component.fullMarks,
+    order: component.order,
+    isRequired: component.isRequired,
+    obtainedMarks: null,
+    isReleased: false,
+    releasedAt: null,
+    remarks: '',
+    lastUpdatedAt: null,
+    lastUpdatedBy: null,
+  }));
+}
+
+export function buildEnrolledSubjectSeed(input: {
+  offeredSubject: Pick<
+    TOfferedSubject,
+    | 'semesterRegistration'
+    | 'academicSemester'
+    | 'academicInstructor'
+    | 'academicDepartment'
+    | 'subject'
+    | 'instructor'
+    | 'markingSchemeSnapshot'
+    | 'assessmentComponentsSnapshot'
+  > & { _id: Types.ObjectId };
+  student: Types.ObjectId;
+}) {
+  const { offeredSubject, student } = input;
+  const markEntries = initializeMarkEntriesFromOfferedSubject(offeredSubject);
+  const markSummary = calculateMarkSummary(
+    markEntries,
+    offeredSubject.markingSchemeSnapshot.totalMarks,
+  );
+
+  return {
+    semesterRegistration: offeredSubject.semesterRegistration,
+    academicSemester: offeredSubject.academicSemester,
+    academicInstructor: offeredSubject.academicInstructor,
+    academicDepartment: offeredSubject.academicDepartment,
+    offeredSubject: offeredSubject._id,
+    subject: offeredSubject.subject,
+    student,
+    instructor: offeredSubject.instructor,
+    isEnrolled: true,
+    markingSchemeSnapshot: offeredSubject.markingSchemeSnapshot,
+    markEntries,
+    markSummary,
+    auditLogs: [],
+    resultStatus: 'IN_PROGRESS' as const,
+    grade: 'NA' as const,
+    gradePoints: 0,
+    finalResultPublishedAt: null,
+    isCompleted: false,
+  };
+}
+
+export function calculateMarkSummary(
+  markEntries: TEnrolledSubjectMarkEntry[],
+  totalMarks: number,
+): TEnrolledSubjectMarkSummary {
+  const summary = { ...DEFAULT_MARK_SUMMARY, totalMarks };
+
+  for (const entry of markEntries) {
+    const obtained = entry.obtainedMarks ?? 0;
+
+    switch (entry.bucket) {
+      case 'THEORY_CONTINUOUS':
+        summary.theoryContinuous += obtained;
+        if (entry.isReleased) summary.releasedTheoryContinuous += obtained;
+        break;
+      case 'THEORY_FINAL':
+        summary.theoryFinal += obtained;
+        if (entry.isReleased) summary.releasedTheoryFinal += obtained;
+        break;
+      case 'PRACTICAL_CONTINUOUS':
+        summary.practicalContinuous += obtained;
+        if (entry.isReleased) summary.releasedPracticalContinuous += obtained;
+        break;
+      case 'PRACTICAL_FINAL':
+        summary.practicalFinal += obtained;
+        if (entry.isReleased) summary.releasedPracticalFinal += obtained;
+        break;
+      default:
+        break;
+    }
+
+    if (entry.isReleased) {
+      summary.releasedMarks += entry.fullMarks;
+    }
+  }
+
+  summary.total =
+    summary.theoryContinuous +
+    summary.theoryFinal +
+    summary.practicalContinuous +
+    summary.practicalFinal;
+  summary.releasedTotal =
+    summary.releasedTheoryContinuous +
+    summary.releasedTheoryFinal +
+    summary.releasedPracticalContinuous +
+    summary.releasedPracticalFinal;
+  summary.percentage = totalMarks > 0 ? (summary.total / totalMarks) * 100 : 0;
+  summary.releasedPercentage =
+    summary.releasedMarks > 0
+      ? (summary.releasedTotal / summary.releasedMarks) * 100
+      : 0;
+
+  return summary;
+}
+
+export function determineResultStatus(
+  markEntries: TEnrolledSubjectMarkEntry[],
+  finalResultPublishedAt?: Date | null,
+): TEnrolledSubjectResultStatus {
+  if (finalResultPublishedAt) {
+    return 'FINAL_PUBLISHED';
+  }
+
+  const requiredEntries = markEntries.filter((entry) => entry.isRequired);
+  const allRequiredEntered = requiredEntries.every(
+    (entry) => entry.obtainedMarks !== null,
+  );
+  const anyReleased = markEntries.some((entry) => entry.isReleased);
+
+  if (allRequiredEntered) {
+    return 'FINAL_READY';
+  }
+
+  if (anyReleased) {
+    return 'PARTIAL_RELEASED';
+  }
+
+  return 'IN_PROGRESS';
+}
+
+export function appendAuditLogs(
+  auditLogs: TEnrolledSubjectAuditLog[],
+  newLogs: TEnrolledSubjectAuditLog[],
+) {
+  const combined = [...auditLogs, ...newLogs];
+  return combined.slice(-200);
+}
+
+export function getReleasedMarkEntries(
+  markEntries: TEnrolledSubjectMarkEntry[],
+) {
+  return markEntries.filter((entry) => entry.isReleased);
+}

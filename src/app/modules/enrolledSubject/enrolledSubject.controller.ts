@@ -1,7 +1,7 @@
-import { StatusCodes } from "http-status-codes";
-import sendResponse from "../../utils/sendResponse.js";
-import catchAsync from "../../utils/CatchAsync.js";
-import { EnrolledSubjectServices } from "./enrolledSubject.service.js";
+import { StatusCodes } from 'http-status-codes';
+import sendResponse from '../../utils/sendResponse.js';
+import catchAsync from '../../utils/CatchAsync.js';
+import { EnrolledSubjectServices } from './enrolledSubject.service.js';
 
 const createEnrolledSubject = catchAsync(async (req, res) => {
   const userId = req.user.userId;
@@ -45,18 +45,63 @@ const getMyEnrolledSubjects = catchAsync(async (req, res) => {
   });
 });
 
-const updateEnrolledSubjectMarks = catchAsync(async (req, res) => {
-  const instructorId = req.user.userId;
+const upsertEnrolledSubjectMarks = catchAsync(async (req, res) => {
+  const result = await EnrolledSubjectServices.upsertEnrolledSubjectMarksIntoDB(
+    req.user.userId,
+    req.user.role,
+    req.body,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Marks updated successfully',
+    data: result,
+  });
+});
+
+const releaseOfferedSubjectComponent = catchAsync(async (req, res) => {
   const result =
-    await EnrolledSubjectServices.updateEnrolledSubjectMarksIntoDB(
-      instructorId,
+    await EnrolledSubjectServices.releaseOfferedSubjectComponentIntoDB(
+      req.user.userId,
+      req.user.role,
       req.body,
     );
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
-    message: 'Marks is updated succesfully',
+    message: 'Assessment component released successfully',
+    data: result,
+  });
+});
+
+const publishOfferedSubjectFinalResult = catchAsync(async (req, res) => {
+  const result = await EnrolledSubjectServices.publishOfferedSubjectFinalResultIntoDB(
+    req.user.userId,
+    req.user.role,
+    req.body,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Final result published successfully',
+    data: result,
+  });
+});
+
+const getOfferedSubjectMarkSheet = catchAsync(async (req, res) => {
+  const result = await EnrolledSubjectServices.getOfferedSubjectMarkSheetFromDB(
+    req.params.offeredSubjectId,
+    req.user.userId,
+    req.user.role,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Offered subject mark sheet retrieved successfully',
     data: result,
   });
 });
@@ -65,5 +110,8 @@ export const EnrolledSubjectControllers = {
   createEnrolledSubject,
   getAllEnrolledSubjects,
   getMyEnrolledSubjects,
-  updateEnrolledSubjectMarks,
+  upsertEnrolledSubjectMarks,
+  releaseOfferedSubjectComponent,
+  publishOfferedSubjectFinalResult,
+  getOfferedSubjectMarkSheet,
 };

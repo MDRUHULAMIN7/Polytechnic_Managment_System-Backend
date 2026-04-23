@@ -1,6 +1,41 @@
 import mongoose, { Schema } from 'mongoose';
 import { Days } from './OfferedSubject.constant.js';
-import type{ TOfferedSubject } from './OfferedSubject.interface.js';
+import {
+  OfferedSubjectMarkingStatuses,
+  type TOfferedSubject,
+} from './OfferedSubject.interface.js';
+import {
+  AssessmentBuckets,
+  AssessmentComponentTypes,
+} from '../subject/subject.constant.js';
+
+const markingSchemeSnapshotSchema = new Schema(
+  {
+    theoryContinuous: { type: Number, required: true, min: 0, default: 0 },
+    theoryFinal: { type: Number, required: true, min: 0, default: 0 },
+    practicalContinuous: { type: Number, required: true, min: 0, default: 0 },
+    practicalFinal: { type: Number, required: true, min: 0, default: 0 },
+    totalMarks: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
+const assessmentComponentSnapshotSchema = new Schema(
+  {
+    code: { type: String, required: true, trim: true },
+    title: { type: String, required: true, trim: true },
+    bucket: { type: String, enum: AssessmentBuckets, required: true },
+    componentType: {
+      type: String,
+      enum: AssessmentComponentTypes,
+      required: true,
+    },
+    fullMarks: { type: Number, required: true, min: 0 },
+    order: { type: Number, required: true, min: 1 },
+    isRequired: { type: Boolean, default: true },
+  },
+  { _id: false },
+);
 
 const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
   {
@@ -56,13 +91,37 @@ const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
       type: String,
       required: true,
     },
+    markingSchemeSnapshot: {
+      type: markingSchemeSnapshotSchema,
+      required: true,
+    },
+    assessmentComponentsSnapshot: {
+      type: [assessmentComponentSnapshotSchema],
+      default: [],
+    },
+    releasedComponentCodes: {
+      type: [String],
+      default: [],
+    },
+    finalResultPublishedAt: {
+      type: Date,
+      default: null,
+    },
+    markingStatus: {
+      type: String,
+      enum: OfferedSubjectMarkingStatuses,
+      default: 'NOT_STARTED',
+    },
   },
   {
     timestamps: true,
   },
 );
 
-offeredSubjectSchema.index({ semesterRegistration: 1, subject: 1 }, { unique: true });
+offeredSubjectSchema.index(
+  { semesterRegistration: 1, subject: 1 },
+  { unique: true },
+);
 
 export const OfferedSubject = mongoose.model<TOfferedSubject>(
   'OfferedSubject',
