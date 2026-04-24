@@ -58,7 +58,7 @@ const SubjectSchema = new Schema(
     title: { type: String, required: true, trim: true, unique: true },
     prefix: { type: String, trim: true, required: true },
     code: { type: Number, required: true, trim: true, unique: true },
-    credits: { type: Number, required: true, unique: true, min: 0 },
+    credits: { type: Number, required: true, min: 0 },
     regulation: { type: Number, required: true },
     subjectType: { type: String, enum: SubjectTypes, required: true },
     markingScheme: {

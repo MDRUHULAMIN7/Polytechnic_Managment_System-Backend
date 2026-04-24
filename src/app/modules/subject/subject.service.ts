@@ -19,24 +19,8 @@ const resolveInstructorIdFromUserId = async (userId: string) => {
   return instructor._id;
 };
 
-const ensureUniqueCredits = async (credits: number, excludeId?: string) => {
-  const existingSubject = await Subject.findOne({
-    credits,
-    ...(excludeId ? { _id: { $ne: excludeId } } : {}),
-  }).select('_id');
-
-  if (existingSubject) {
-    throw new AppError(
-      StatusCodes.CONFLICT,
-      'Credits already exist. Please use a different credit value.',
-    );
-  }
-};
-
 // Create Subject
 const createSubjectIntoDB = async (payload: TSubject) => {
-  await ensureUniqueCredits(payload.credits);
-
   const normalizedMarkingPayload = normalizeMarkingPayload({
     markingScheme: payload.markingScheme,
     assessmentComponents: payload.assessmentComponents,
@@ -111,10 +95,6 @@ const updateSubjectIntoDB = async (id: string, payload: Partial<TSubject>) => {
 
     if (!existingSubject) {
       throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found!');
-    }
-
-    if (typeof subjectRemainingData.credits === 'number') {
-      await ensureUniqueCredits(subjectRemainingData.credits, id);
     }
 
     let normalizedMarkingPayload = null;
