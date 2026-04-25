@@ -114,13 +114,18 @@ export function syncMarkEntriesWithOfferedSubject(
     offeredSubject.assessmentComponentsSnapshot ?? [],
   ).assessmentComponents;
   const existingEntryMap = new Map(
-    (markEntries ?? []).map((entry) => [entry.componentCode, entry]),
+    (markEntries ?? [])
+      .filter((entry) => Boolean(entry?.componentCode))
+      .map((entry) => [entry.componentCode, entry]),
   );
 
   let changed = false;
 
-  const nextEntries = repairedComponents.map((component) => {
-    const existingEntry = existingEntryMap.get(component.code);
+  const nextEntries = repairedComponents.map((component, index) => {
+    const existingEntry =
+      existingEntryMap.get(component.code) ??
+      (markEntries ?? []).find((entry) => entry?.order === component.order) ??
+      (markEntries ?? [])[index];
 
     if (!existingEntry) {
       changed = true;
@@ -141,26 +146,44 @@ export function syncMarkEntriesWithOfferedSubject(
       };
     }
 
-    if (
-      existingEntry.componentTitle !== component.title ||
-      existingEntry.bucket !== component.bucket ||
-      existingEntry.componentType !== component.componentType ||
-      existingEntry.fullMarks !== component.fullMarks ||
-      existingEntry.order !== component.order ||
-      existingEntry.isRequired !== component.isRequired
-    ) {
-      changed = true;
-    }
-
-    return {
-      ...existingEntry,
+    const normalizedEntry = {
+      componentCode: component.code,
       componentTitle: component.title,
       bucket: component.bucket,
       componentType: component.componentType,
       fullMarks: component.fullMarks,
       order: component.order,
       isRequired: component.isRequired,
+      obtainedMarks:
+        typeof existingEntry.obtainedMarks === 'number'
+          ? existingEntry.obtainedMarks
+          : null,
+      isReleased: Boolean(existingEntry.isReleased),
+      releasedAt: existingEntry.releasedAt ?? null,
+      remarks: existingEntry.remarks ?? '',
+      lastUpdatedAt: existingEntry.lastUpdatedAt ?? null,
+      lastUpdatedBy: existingEntry.lastUpdatedBy ?? null,
     };
+
+    if (
+      existingEntry.componentCode !== normalizedEntry.componentCode ||
+      existingEntry.componentTitle !== normalizedEntry.componentTitle ||
+      existingEntry.bucket !== normalizedEntry.bucket ||
+      existingEntry.componentType !== normalizedEntry.componentType ||
+      existingEntry.fullMarks !== normalizedEntry.fullMarks ||
+      existingEntry.order !== normalizedEntry.order ||
+      existingEntry.isRequired !== normalizedEntry.isRequired ||
+      existingEntry.obtainedMarks !== normalizedEntry.obtainedMarks ||
+      existingEntry.isReleased !== normalizedEntry.isReleased ||
+      (existingEntry.releasedAt ?? null) !== normalizedEntry.releasedAt ||
+      (existingEntry.remarks ?? '') !== normalizedEntry.remarks ||
+      (existingEntry.lastUpdatedAt ?? null) !== normalizedEntry.lastUpdatedAt ||
+      (existingEntry.lastUpdatedBy ?? null) !== normalizedEntry.lastUpdatedBy
+    ) {
+      changed = true;
+    }
+
+    return normalizedEntry;
   });
 
   if ((markEntries ?? []).length !== nextEntries.length) {

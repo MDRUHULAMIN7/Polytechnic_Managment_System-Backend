@@ -36,7 +36,7 @@ router.post(
 
 router.patch(
   '/update-enrolled-subject-marks',
-  auth(USER_ROLE.instructor, USER_ROLE.admin, USER_ROLE.superAdmin),
+  auth(USER_ROLE.instructor),
   validateRequest(
     EnrolledSubjectValidations.updateEnrolledSubjectMarksValidationZodSchema,
   ),
@@ -45,7 +45,7 @@ router.patch(
 
 router.patch(
   '/release-component',
-  auth(USER_ROLE.instructor, USER_ROLE.admin, USER_ROLE.superAdmin),
+  auth(USER_ROLE.instructor),
   validateRequest(
     EnrolledSubjectValidations.releaseEnrolledSubjectComponentValidationZodSchema,
   ),
