@@ -14,6 +14,7 @@ import { NotificationService } from '../notification/notification.service.js';
 import {
   cloneAssessmentComponents,
   cloneMarkingScheme,
+  ensureAssessmentComponentsComplete,
 } from '../subject/subject.marking.js';
 import {
   collectScheduleConflicts,
@@ -258,9 +259,10 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
     endTime: resolvedSchedule.endTime,
     scheduleBlocks: resolvedSchedule.scheduleBlocks,
     markingSchemeSnapshot: cloneMarkingScheme(isSubjectExits.markingScheme),
-    assessmentComponentsSnapshot: cloneAssessmentComponents(
-      isSubjectExits.assessmentComponents,
-    ),
+    assessmentComponentsSnapshot: ensureAssessmentComponentsComplete(
+      isSubjectExits.markingScheme,
+      cloneAssessmentComponents(isSubjectExits.assessmentComponents),
+    ).assessmentComponents,
     releasedComponentCodes: [],
     markingStatus: 'NOT_STARTED',
   });

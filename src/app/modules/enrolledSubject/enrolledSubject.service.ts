@@ -21,7 +21,9 @@ import {
   calculateMarkSummary,
   determineResultStatus,
   getReleasedMarkEntries,
+  syncMarkEntriesWithOfferedSubject,
 } from './enrolledSubject.utils.js';
+import { ensureAssessmentComponentsComplete } from '../subject/subject.marking.js';
 
 type TMarkEntryInput = {
   componentCode: string;
@@ -80,6 +82,50 @@ const ensureOfferedSubjectAccess = async (
   }
 
   return offeredSubject;
+};
+
+const repairOfferedSubjectMarkingData = async (
+  offeredSubject: Awaited<ReturnType<typeof ensureOfferedSubjectAccess>>,
+) => {
+  const repairedSnapshot = ensureAssessmentComponentsComplete(
+    offeredSubject.markingSchemeSnapshot,
+    offeredSubject.assessmentComponentsSnapshot ?? [],
+  );
+
+  if (repairedSnapshot.changed) {
+    offeredSubject.assessmentComponentsSnapshot =
+      repairedSnapshot.assessmentComponents;
+    await offeredSubject.save();
+  }
+
+  return offeredSubject;
+};
+
+const repairEnrolledSubjectMarkEntries = async (
+  enrolledSubject: mongoose.HydratedDocument<TEnrolledSubject>,
+  offeredSubject: Awaited<ReturnType<typeof ensureOfferedSubjectAccess>>,
+) => {
+  const syncedEntries = syncMarkEntriesWithOfferedSubject(
+    enrolledSubject.markEntries,
+    offeredSubject,
+  );
+
+  if (!syncedEntries.changed) {
+    return enrolledSubject;
+  }
+
+  enrolledSubject.markEntries = syncedEntries.markEntries;
+  enrolledSubject.markSummary = calculateMarkSummary(
+    enrolledSubject.markEntries,
+    enrolledSubject.markingSchemeSnapshot.totalMarks,
+  );
+  enrolledSubject.resultStatus = determineResultStatus(
+    enrolledSubject.markEntries,
+    enrolledSubject.finalResultPublishedAt,
+  );
+  await enrolledSubject.save();
+
+  return enrolledSubject;
 };
 
 const createEnrolledSubjectIntoDB = async (
@@ -217,7 +263,9 @@ const upsertEnrolledSubjectMarksIntoDB = async (
   },
 ) => {
   const actor = await resolveActor(userId, role);
-  await ensureOfferedSubjectAccess(payload.offeredSubject, actor);
+  const offeredSubject = await repairOfferedSubjectMarkingData(
+    await ensureOfferedSubjectAccess(payload.offeredSubject, actor),
+  );
 
   const enrolledSubject = await EnrolledSubject.findOne({
     offeredSubject: payload.offeredSubject,
@@ -227,6 +275,8 @@ const upsertEnrolledSubjectMarksIntoDB = async (
   if (!enrolledSubject) {
     throw new AppError(StatusCodes.NOT_FOUND, 'Enrolled subject not found !');
   }
+
+  await repairEnrolledSubjectMarkEntries(enrolledSubject, offeredSubject);
 
   const entryMap = new Map(
     enrolledSubject.markEntries.map((entry) => [entry.componentCode, entry]),
@@ -323,9 +373,8 @@ const releaseOfferedSubjectComponentIntoDB = async (
   },
 ) => {
   const actor = await resolveActor(userId, role);
-  const offeredSubject = await ensureOfferedSubjectAccess(
-    payload.offeredSubject,
-    actor,
+  const offeredSubject = await repairOfferedSubjectMarkingData(
+    await ensureOfferedSubjectAccess(payload.offeredSubject, actor),
   );
 
   const component = offeredSubject.assessmentComponentsSnapshot.find(
@@ -348,6 +397,7 @@ const releaseOfferedSubjectComponentIntoDB = async (
   }
 
   for (const enrolledSubject of enrolledSubjects) {
+    await repairEnrolledSubjectMarkEntries(enrolledSubject, offeredSubject);
     const targetEntry = enrolledSubject.markEntries.find(
       (entry) => entry.componentCode === payload.componentCode,
     );
@@ -466,18 +516,23 @@ const getOfferedSubjectMarkSheetFromDB = async (
   role: TUserRole,
 ) => {
   const actor = await resolveActor(userId, role);
-  const offeredSubject = await ensureOfferedSubjectAccess(offeredSubjectId, actor);
+  const offeredSubject = await repairOfferedSubjectMarkingData(
+    await ensureOfferedSubjectAccess(offeredSubjectId, actor),
+  );
 
   const enrolledSubjects = await EnrolledSubject.find({
     offeredSubject: offeredSubjectId,
   })
     .populate('student', 'id name')
-    .sort({ 'student.id': 1, _id: 1 })
-    .lean();
+    .sort({ 'student.id': 1, _id: 1 });
+
+  for (const enrolledSubject of enrolledSubjects) {
+    await repairEnrolledSubjectMarkEntries(enrolledSubject, offeredSubject);
+  }
 
   return {
     offeredSubject,
-    enrolledSubjects,
+    enrolledSubjects: enrolledSubjects.map((item) => item.toObject()),
   };
 };
 

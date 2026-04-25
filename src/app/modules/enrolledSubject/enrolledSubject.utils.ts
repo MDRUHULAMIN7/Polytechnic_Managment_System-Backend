@@ -6,6 +6,7 @@ import type {
   TEnrolledSubjectMarkSummary,
   TEnrolledSubjectResultStatus,
 } from './enrolledSubject.interface.js';
+import { ensureAssessmentComponentsComplete } from '../subject/subject.marking.js';
 
 export const DEFAULT_MARK_SUMMARY: TEnrolledSubjectMarkSummary = {
   theoryContinuous: 0,
@@ -76,10 +77,15 @@ export const calculateGradeAndPoints = (
 export function initializeMarkEntriesFromOfferedSubject(
   offeredSubject: Pick<
     TOfferedSubject,
-    'assessmentComponentsSnapshot'
+    'assessmentComponentsSnapshot' | 'markingSchemeSnapshot'
   >,
 ): TEnrolledSubjectMarkEntry[] {
-  return offeredSubject.assessmentComponentsSnapshot.map((component) => ({
+  const repairedComponents = ensureAssessmentComponentsComplete(
+    offeredSubject.markingSchemeSnapshot,
+    offeredSubject.assessmentComponentsSnapshot ?? [],
+  ).assessmentComponents;
+
+  return repairedComponents.map((component) => ({
     componentCode: component.code,
     componentTitle: component.title,
     bucket: component.bucket,
@@ -94,6 +100,77 @@ export function initializeMarkEntriesFromOfferedSubject(
     lastUpdatedAt: null,
     lastUpdatedBy: null,
   }));
+}
+
+export function syncMarkEntriesWithOfferedSubject(
+  markEntries: TEnrolledSubjectMarkEntry[],
+  offeredSubject: Pick<
+    TOfferedSubject,
+    'assessmentComponentsSnapshot' | 'markingSchemeSnapshot'
+  >,
+) {
+  const repairedComponents = ensureAssessmentComponentsComplete(
+    offeredSubject.markingSchemeSnapshot,
+    offeredSubject.assessmentComponentsSnapshot ?? [],
+  ).assessmentComponents;
+  const existingEntryMap = new Map(
+    (markEntries ?? []).map((entry) => [entry.componentCode, entry]),
+  );
+
+  let changed = false;
+
+  const nextEntries = repairedComponents.map((component) => {
+    const existingEntry = existingEntryMap.get(component.code);
+
+    if (!existingEntry) {
+      changed = true;
+      return {
+        componentCode: component.code,
+        componentTitle: component.title,
+        bucket: component.bucket,
+        componentType: component.componentType,
+        fullMarks: component.fullMarks,
+        order: component.order,
+        isRequired: component.isRequired,
+        obtainedMarks: null,
+        isReleased: false,
+        releasedAt: null,
+        remarks: '',
+        lastUpdatedAt: null,
+        lastUpdatedBy: null,
+      };
+    }
+
+    if (
+      existingEntry.componentTitle !== component.title ||
+      existingEntry.bucket !== component.bucket ||
+      existingEntry.componentType !== component.componentType ||
+      existingEntry.fullMarks !== component.fullMarks ||
+      existingEntry.order !== component.order ||
+      existingEntry.isRequired !== component.isRequired
+    ) {
+      changed = true;
+    }
+
+    return {
+      ...existingEntry,
+      componentTitle: component.title,
+      bucket: component.bucket,
+      componentType: component.componentType,
+      fullMarks: component.fullMarks,
+      order: component.order,
+      isRequired: component.isRequired,
+    };
+  });
+
+  if ((markEntries ?? []).length !== nextEntries.length) {
+    changed = true;
+  }
+
+  return {
+    markEntries: nextEntries,
+    changed,
+  };
 }
 
 export function buildEnrolledSubjectSeed(input: {

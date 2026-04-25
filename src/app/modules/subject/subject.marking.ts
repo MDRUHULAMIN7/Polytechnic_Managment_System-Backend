@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes';
 import type {
   TAssessmentBucket,
   TAssessmentComponent,
+  TAssessmentComponentType,
   TSubjectMarkingScheme,
 } from './subject.interface.js';
 
@@ -19,6 +20,36 @@ const bucketToSchemeKey: Record<
   THEORY_FINAL: 'theoryFinal',
   PRACTICAL_CONTINUOUS: 'practicalContinuous',
   PRACTICAL_FINAL: 'practicalFinal',
+};
+
+const fallbackBucketMeta: Record<
+  TAssessmentBucket,
+  {
+    codePrefix: string;
+    title: string;
+    componentType: TAssessmentComponentType;
+  }
+> = {
+  THEORY_CONTINUOUS: {
+    codePrefix: 'theory_continuous',
+    title: 'Theory Continuous',
+    componentType: 'teacher_assessment',
+  },
+  THEORY_FINAL: {
+    codePrefix: 'theory_final',
+    title: 'Theory Final',
+    componentType: 'written_exam',
+  },
+  PRACTICAL_CONTINUOUS: {
+    codePrefix: 'practical_continuous',
+    title: 'Practical Continuous',
+    componentType: 'lab_performance',
+  },
+  PRACTICAL_FINAL: {
+    codePrefix: 'practical_final',
+    title: 'Practical Final',
+    componentType: 'practical_exam',
+  },
 };
 
 function sanitizeCodeSegment(value: string) {
@@ -131,5 +162,72 @@ export function cloneAssessmentComponents(
 export function cloneMarkingScheme(markingScheme: TSubjectMarkingScheme) {
   return {
     ...markingScheme,
+  };
+}
+
+export function ensureAssessmentComponentsComplete(
+  markingScheme: TSubjectMarkingScheme,
+  assessmentComponents: TAssessmentComponent[],
+) {
+  const normalized = cloneAssessmentComponents(assessmentComponents ?? []).sort(
+    (left, right) => left.order - right.order,
+  );
+  const usedCodes = new Set(normalized.map((component) => component.code));
+  let changed = false;
+  let nextOrder =
+    normalized.reduce((maxOrder, component) => Math.max(maxOrder, component.order), 0) + 1;
+
+  for (const bucket of Object.keys(bucketToSchemeKey) as TAssessmentBucket[]) {
+    const schemeKey = bucketToSchemeKey[bucket];
+    const expectedMarks = Number(markingScheme?.[schemeKey] ?? 0);
+
+    if (expectedMarks <= 0) {
+      continue;
+    }
+
+    const currentTotal = normalized
+      .filter((component) => component.bucket === bucket)
+      .reduce((sum, component) => sum + Number(component.fullMarks ?? 0), 0);
+
+    if (currentTotal >= expectedMarks) {
+      continue;
+    }
+
+    changed = true;
+
+    const fallback = fallbackBucketMeta[bucket];
+    const missingMarks = expectedMarks - currentTotal;
+    let code = `${fallback.codePrefix}_auto`;
+    let suffix = 1;
+
+    while (usedCodes.has(code)) {
+      suffix += 1;
+      code = `${fallback.codePrefix}_auto_${suffix}`;
+    }
+
+    usedCodes.add(code);
+    normalized.push({
+      code,
+      title:
+        currentTotal > 0 ? `${fallback.title} Additional` : fallback.title,
+      bucket,
+      componentType: fallback.componentType,
+      fullMarks: missingMarks,
+      order: nextOrder,
+      isRequired: true,
+    });
+    nextOrder += 1;
+  }
+
+  const nextComponents = normalized
+    .sort((left, right) => left.order - right.order)
+    .map((component, index) => ({
+      ...component,
+      order: index + 1,
+    }));
+
+  return {
+    assessmentComponents: nextComponents,
+    changed,
   };
 }
