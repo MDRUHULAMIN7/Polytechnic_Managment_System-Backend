@@ -288,7 +288,7 @@ const createSemesterEnrollmentIntoDB = async (
     academicInstructor: student.academicInstructor,
     subject: { $in: curriculumSubjectIds },
     maxCapacity: { $gt: 0 },
-  }).sort({ section: 1, createdAt: 1 });
+  }).sort({ createdAt: 1 });
 
   const offeredSubjectBySubjectId = new Map<string, (typeof offeredSubjects)[number]>();
   for (const offeredSubject of offeredSubjects) {

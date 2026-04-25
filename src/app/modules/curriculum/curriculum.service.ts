@@ -12,13 +12,19 @@ import type {
 } from './curriculum.interface.js';
 import { Curriculum } from './curriculum.model.js';
 import { Student } from '../student/student.model.js';
+import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
+
+const creditsAreEqual = (left: number, right: number) =>
+  Math.abs(left - right) < 0.0001;
 
 const validateSemesterRegistrationForSemester = async (
   semisterRegistration: TCurriculum['semisterRegistration'],
   academicSemester: TCurriculum['academicSemester'],
 ) => {
   const semesterRegistration =
-    await SemesterRegistration.findById(semisterRegistration);
+    await SemesterRegistration.findById(semisterRegistration).select(
+      'academicSemester totalCredit status',
+    );
 
   if (!semesterRegistration) {
     throw new AppError(StatusCodes.NOT_FOUND, 'Semester registration not found!');
@@ -30,11 +36,29 @@ const validateSemesterRegistrationForSemester = async (
       'Academic semester and semester registration are not matched!',
     );
   }
+
+  return semesterRegistration;
+};
+
+const assertCurriculumCreditMatchesRegistration = (
+  curriculumCredit: number,
+  semesterRegistrationTotalCredit: number,
+) => {
+  if (creditsAreEqual(curriculumCredit, semesterRegistrationTotalCredit)) {
+    return;
+  }
+
+  throw new AppError(
+    StatusCodes.BAD_REQUEST,
+    `Selected subjects total credit (${curriculumCredit}) must exactly match the semester registration total credit (${semesterRegistrationTotalCredit}).`,
+  );
 };
 
 const validateSubjectsAndCalculateCredit = async (
   subjects: TCurriculum['subjects'],
   regulation: TCurriculum['regulation'],
+  academicDepartment: TCurriculum['academicDepartment'],
+  semisterRegistration: TCurriculum['semisterRegistration'],
 ) => {
   if (!subjects?.length) {
     throw new AppError(StatusCodes.BAD_REQUEST, 'At least one subject is required!');
@@ -53,6 +77,22 @@ const validateSubjectsAndCalculateCredit = async (
 
   if (existingSubjects.length !== uniqueSubjectIds.length) {
     throw new AppError(StatusCodes.NOT_FOUND, 'One or more subjects not found!');
+  }
+
+  const offeredSubjects = await OfferedSubject.find({
+    academicDepartment,
+    semesterRegistration: semisterRegistration,
+    subject: { $in: uniqueSubjectIds },
+  }).select('subject');
+  const offeredSubjectIds = new Set(
+    offeredSubjects.map((offeredSubject) => offeredSubject.subject.toString()),
+  );
+
+  if (offeredSubjectIds.size !== uniqueSubjectIds.length) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'All curriculum subjects must be selected from offered subjects for the chosen semester registration.',
+    );
   }
 
   const hasRegulationMismatch = existingSubjects.some(
@@ -106,7 +146,7 @@ const createCurriculumIntoDB = async (payload: TCreateCurriculumPayload) => {
     await AcademicDepartment.findById(academicDepartment);
   const semesterRegistration =
     await SemesterRegistration.findById(semisterRegistration).select(
-      'academicSemester status',
+      'academicSemester status totalCredit',
     );
 
   if (!isAcademicDepartmentExists) {
@@ -142,6 +182,12 @@ const createCurriculumIntoDB = async (payload: TCreateCurriculumPayload) => {
   const totalCredit = await validateSubjectsAndCalculateCredit(
     subjects,
     regulation,
+    academicDepartment,
+    semisterRegistration,
+  );
+  assertCurriculumCreditMatchesRegistration(
+    totalCredit,
+    semesterRegistration.totalCredit,
   );
 
   const result = await Curriculum.create({
@@ -290,6 +336,9 @@ const updateCurriculumIntoDB = async (
   const existingSubjectIds = existingCurriculum.subjects.map((subject) =>
     subject.toString(),
   );
+  let effectiveSemesterRegistration = await SemesterRegistration.findById(
+    effectiveSemisterRegistration,
+  ).select('academicSemester totalCredit status');
 
   let effectiveSubjects: TCurriculum['subjects'] = existingCurriculum.subjects;
 
@@ -333,10 +382,14 @@ const updateCurriculumIntoDB = async (
   }
 
   if (payload.semisterRegistration || payload.academicSemester) {
-    await validateSemesterRegistrationForSemester(
+    effectiveSemesterRegistration = await validateSemesterRegistrationForSemester(
       effectiveSemisterRegistration,
       effectiveAcademicSemester,
     );
+  }
+
+  if (!effectiveSemesterRegistration) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Semester registration not found!');
   }
 
   const isDuplicateCurriculumExists = await Curriculum.findOne({
@@ -357,11 +410,18 @@ const updateCurriculumIntoDB = async (
   if (
     payload.subjects ||
     payload.regulation !== undefined ||
-    payload.totalCredit !== undefined
+    payload.totalCredit !== undefined ||
+    payload.semisterRegistration !== undefined
   ) {
     const calculatedCredit = await validateSubjectsAndCalculateCredit(
       effectiveSubjects,
       effectiveRegulation,
+      effectiveAcademicDepartment,
+      effectiveSemisterRegistration,
+    );
+    assertCurriculumCreditMatchesRegistration(
+      calculatedCredit,
+      effectiveSemesterRegistration.totalCredit,
     );
     payload.totalCredit = calculatedCredit;
   }

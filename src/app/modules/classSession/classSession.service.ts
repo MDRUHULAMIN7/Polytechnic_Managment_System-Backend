@@ -356,7 +356,7 @@ const getInstructorClassSessionDetailsFromDB = async (
         .populate('subject', 'title code')
         .populate('instructor', 'id name designation')
         .populate('room', 'roomName roomNumber buildingNumber capacity')
-        .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
+        .populate('offeredSubject', 'days startTime endTime scheduleBlocks')
         .populate('semesterRegistration', 'status shift startDate endDate'),
       EnrolledSubject.find({
         offeredSubject: classSession.offeredSubject,
@@ -446,7 +446,7 @@ const startClassSessionIntoDB = async (
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
     .populate('room', 'roomName roomNumber buildingNumber capacity')
-    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
+    .populate('offeredSubject', 'days startTime endTime scheduleBlocks');
 
   if (result) {
     void NotificationService.notifyClassStarted(result).catch((error) =>
@@ -503,7 +503,7 @@ const completeClassSessionIntoDB = async (
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
     .populate('room', 'roomName roomNumber buildingNumber capacity')
-    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
+    .populate('offeredSubject', 'days startTime endTime scheduleBlocks');
 
   if (result) {
     void NotificationService.notifyClassCompleted(result).catch((error) =>
@@ -566,7 +566,7 @@ const rescheduleClassSessionIntoDB = async (
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
     .populate('room', 'roomName roomNumber buildingNumber capacity')
-    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
+    .populate('offeredSubject', 'days startTime endTime scheduleBlocks');
 
   if (result) {
     void NotificationService.notifyClassCancelled(result).catch((error) =>
@@ -609,7 +609,7 @@ const cancelClassSessionIntoDB = async (classSessionId: string) => {
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
     .populate('room', 'roomName roomNumber buildingNumber capacity')
-    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks');
+    .populate('offeredSubject', 'days startTime endTime scheduleBlocks');
 
   return result;
 };
@@ -624,7 +624,7 @@ const getStudentClassSessionDetailsFromDB = async (
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation email')
     .populate('room', 'roomName roomNumber buildingNumber capacity')
-    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
+    .populate('offeredSubject', 'days startTime endTime scheduleBlocks')
     .populate('semesterRegistration', 'status shift startDate endDate');
 
   if (!classSession) {
@@ -653,17 +653,53 @@ const getStudentClassSessionDetailsFromDB = async (
   };
 };
 
-const getSingleClassSessionFromDB = async (classSessionId: string) => {
+const buildClassSessionStatistics = (classSession: {
+  totalStudents?: number;
+  presentCount?: number;
+  absentCount?: number;
+  leaveCount?: number;
+}) => {
+  const totalStudents = classSession.totalStudents ?? 0;
+  const presentCount = classSession.presentCount ?? 0;
+  const absentCount = classSession.absentCount ?? 0;
+  const leaveCount = classSession.leaveCount ?? 0;
+
+  return {
+    totalStudents,
+    presentCount,
+    absentCount,
+    leaveCount,
+    notMarkedCount: Math.max(
+      totalStudents - presentCount - absentCount - leaveCount,
+      0,
+    ),
+  };
+};
+
+const getSingleClassSessionFromDB = async (
+  classSessionId: string,
+  options?: { includeAttendance?: boolean },
+) => {
   const classSession = await ClassSession.findById(classSessionId)
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation email')
     .populate('room', 'roomName roomNumber buildingNumber capacity')
-    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
+    .populate('offeredSubject', 'days startTime endTime scheduleBlocks')
     .populate('semesterRegistration', 'status shift startDate endDate')
     .populate('academicDepartment', 'name');
 
   if (!classSession) {
     throw new AppError(StatusCodes.NOT_FOUND, 'Class session not found !');
+  }
+
+  const statistics = buildClassSessionStatistics(classSession);
+
+  if (options?.includeAttendance === false) {
+    return {
+      classSession,
+      attendance: [],
+      statistics,
+    };
   }
 
   const attendance = await StudentAttendance.find({
@@ -716,17 +752,7 @@ const getSingleClassSessionFromDB = async (classSessionId: string) => {
   return {
     classSession,
     attendance: participants,
-    statistics: {
-      totalStudents: classSession.totalStudents,
-      presentCount: classSession.presentCount,
-      absentCount: classSession.absentCount,
-      leaveCount: classSession.leaveCount,
-      notMarkedCount:
-        classSession.totalStudents -
-        classSession.presentCount -
-        classSession.absentCount -
-        classSession.leaveCount,
-    },
+    statistics,
   };
 };
 

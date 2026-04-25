@@ -5,6 +5,8 @@ const fieldLabelMap: Record<string, string> = {
   credits: 'Credits',
   email: 'Email',
   id: 'ID',
+  roomName: 'Room name',
+  roomNumber: 'Room number',
   title: 'Title',
 };
 
@@ -44,10 +46,14 @@ const handleDuplicateError = (err: any): TGenericErrorResponse => {
       ];
 
   const statusCode = 409;
+  const message =
+    errorSources.length === 1
+      ? errorSources[0]?.message ?? 'Duplicate value already exists'
+      : 'Duplicate values already exist. Please use different values.';
 
   return {
     statusCode,
-    message: 'Duplicate key error',
+    message,
     errorSources,
   };
 };

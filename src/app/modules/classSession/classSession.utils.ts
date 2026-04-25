@@ -194,7 +194,7 @@ export const buildSessionQuery = (filter: Record<string, unknown>) => {
     .populate('room', 'roomName roomNumber buildingNumber capacity')
     .populate('academicDepartment', 'name')
     .populate('semesterRegistration', 'status shift startDate endDate')
-    .populate('offeredSubject', 'section days startTime endTime scheduleBlocks')
+    .populate('offeredSubject', 'days startTime endTime scheduleBlocks')
     .sort({ date: 1, startTime: 1 });
 };
 

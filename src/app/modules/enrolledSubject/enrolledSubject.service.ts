@@ -524,7 +524,7 @@ const getMyEnrolledSubjectsFromDB = async (userId: string) => {
     .populate('academicSemester', 'name year')
     .populate(
       'offeredSubject',
-      'section days startTime endTime releasedComponentCodes finalResultPublishedAt markingStatus',
+      'days startTime endTime releasedComponentCodes finalResultPublishedAt markingStatus',
     )
     .populate('subject', 'title code credits regulation subjectType markingScheme')
     .populate('instructor', 'id name designation email')

@@ -5,11 +5,13 @@ import mongoose from 'mongoose';
 import seedSuperAdmin from './app/DB/index.js';
 import { socketService } from './app/socket/socket.service.js';
 import { NotificationService } from './app/modules/notification/notification.service.js';
+import { syncRoomIndexes } from './app/modules/room/room.model.js';
 
 let server: Server;
 async function main() {
   try {
     await mongoose.connect(config.database_url as string);
+    await syncRoomIndexes();
     seedSuperAdmin();
     void NotificationService.backfillRetentionIntoDB().catch((error) => {
       console.error('Notification retention backfill failed.', error);

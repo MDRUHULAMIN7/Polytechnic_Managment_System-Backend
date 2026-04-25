@@ -41,7 +41,6 @@ export type TOfferedSubject = {
   subject: Types.ObjectId;
   instructor: Types.ObjectId;
   maxCapacity: number;
-  section: number;
   days: TDays[];
   startTime: string;
   endTime: string;

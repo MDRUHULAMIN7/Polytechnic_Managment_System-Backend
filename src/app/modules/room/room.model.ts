@@ -7,7 +7,6 @@ const roomSchema = new Schema<TRoom>(
       type: String,
       required: true,
       trim: true,
-      unique: true,
     },
     roomNumber: {
       type: Number,
@@ -38,9 +37,17 @@ const roomSchema = new Schema<TRoom>(
   },
 );
 
-roomSchema.index(
-  { buildingNumber: 1, roomNumber: 1 },
-  { unique: true, name: 'building_room_unique' },
-);
+roomSchema.index({ roomNumber: 1 }, { unique: true, name: 'room_number_unique' });
 
 export const Room = mongoose.model<TRoom>('Room', roomSchema);
+
+let roomIndexesSynced = false;
+
+export const syncRoomIndexes = async () => {
+  if (roomIndexesSynced) {
+    return;
+  }
+
+  await Room.syncIndexes();
+  roomIndexesSynced = true;
+};

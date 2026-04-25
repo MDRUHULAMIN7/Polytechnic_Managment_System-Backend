@@ -156,6 +156,9 @@ const getStudentClassSessionDetails = catchAsync(async (req, res) => {
 const getSingleClassSession = catchAsync(async (req, res) => {
   const result = await ClassSessionServices.getSingleClassSessionFromDB(
     req.params.id,
+    {
+      includeAttendance: req.query.includeAttendance !== 'false',
+    },
   );
 
   sendResponse(res, {

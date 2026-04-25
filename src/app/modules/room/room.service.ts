@@ -6,19 +6,15 @@ import { Room } from './room.model.js';
 
 const normalizeRoomName = (value: string) => value.trim();
 
-const assertCompoundRoomUnique = async (
+const assertRoomNumberUnique = async (
   payload: Partial<TRoom>,
   excludeId?: string,
 ) => {
-  if (
-    payload.buildingNumber === undefined ||
-    payload.roomNumber === undefined
-  ) {
+  if (payload.roomNumber === undefined) {
     return;
   }
 
   const duplicate = await Room.findOne({
-    buildingNumber: payload.buildingNumber,
     roomNumber: payload.roomNumber,
     ...(excludeId ? { _id: { $ne: excludeId } } : {}),
   }).select('_id');
@@ -26,7 +22,7 @@ const assertCompoundRoomUnique = async (
   if (duplicate) {
     throw new AppError(
       StatusCodes.CONFLICT,
-      'Another room already exists with the same building and room number.',
+      'Another room already exists with this room number. Room numbers must be unique across all buildings.',
     );
   }
 };
@@ -41,15 +37,7 @@ const createRoomIntoDB = async (payload: TRoom) => {
     throw new AppError(StatusCodes.BAD_REQUEST, 'Room name is required.');
   }
 
-  const duplicateName = await Room.findOne({
-    roomName: normalizedPayload.roomName,
-  }).select('_id');
-
-  if (duplicateName) {
-    throw new AppError(StatusCodes.CONFLICT, 'This room name already exists.');
-  }
-
-  await assertCompoundRoomUnique(normalizedPayload);
+  await assertRoomNumberUnique(normalizedPayload);
 
   return Room.create(normalizedPayload);
 };
@@ -126,24 +114,10 @@ const updateRoomIntoDB = async (id: string, payload: Partial<TRoom>) => {
     }
 
     updatedPayload.roomName = roomName;
-
-    const duplicate = await Room.findOne({
-      roomName,
-      _id: { $ne: id },
-    }).select('_id');
-
-    if (duplicate) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        'Another room already exists with this name.',
-      );
-    }
   }
 
-  await assertCompoundRoomUnique(
+  await assertRoomNumberUnique(
     {
-      buildingNumber:
-        updatedPayload.buildingNumber ?? existing.buildingNumber,
       roomNumber: updatedPayload.roomNumber ?? existing.roomNumber,
     },
     id,

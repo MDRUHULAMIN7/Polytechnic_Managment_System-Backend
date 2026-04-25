@@ -125,22 +125,62 @@ const fetchComparableOfferedSubjects = async (
   }).select('instructor academicDepartment scheduleBlocks days startTime endTime');
 };
 
+const getRequestedFields = (queryObj: Record<string, unknown>) => {
+  if (typeof queryObj.fields !== 'string' || !queryObj.fields.trim()) {
+    return null;
+  }
+
+  return new Set(
+    queryObj.fields
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean),
+  );
+};
+
+const shouldPopulateField = (
+  requestedFields: Set<string> | null,
+  field: string,
+) => !requestedFields || requestedFields.has(field);
+
 const buildOfferedSubjectQuery = (
   queryObj: Record<string, unknown>,
-  userId?: string,
-  role?: TUserRole,
 ) => {
-  return OfferedSubject.find()
-    .populate({
+  const requestedFields = getRequestedFields(queryObj);
+  let query = OfferedSubject.find();
+
+  if (shouldPopulateField(requestedFields, 'semesterRegistration')) {
+    query = query.populate({
       path: 'semesterRegistration',
       select: 'status shift startDate endDate academicSemester',
       populate: { path: 'academicSemester', select: 'name year' },
-    })
-    .populate('academicSemester', 'name year')
-    .populate('academicDepartment', 'name')
-    .populate('subject', 'title code credits subjectType markingScheme')
-    .populate('instructor', 'id name designation')
-    .populate('scheduleBlocks.room', 'roomName roomNumber buildingNumber capacity');
+    });
+  }
+
+  if (shouldPopulateField(requestedFields, 'academicSemester')) {
+    query = query.populate('academicSemester', 'name year');
+  }
+
+  if (shouldPopulateField(requestedFields, 'academicDepartment')) {
+    query = query.populate('academicDepartment', 'name');
+  }
+
+  if (shouldPopulateField(requestedFields, 'subject')) {
+    query = query.populate('subject', 'title code credits subjectType markingScheme');
+  }
+
+  if (shouldPopulateField(requestedFields, 'instructor')) {
+    query = query.populate('instructor', 'id name designation');
+  }
+
+  if (shouldPopulateField(requestedFields, 'scheduleBlocks')) {
+    query = query.populate(
+      'scheduleBlocks.room',
+      'roomName roomNumber buildingNumber capacity',
+    );
+  }
+
+  return query;
 };
 
 const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
@@ -149,7 +189,6 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
     academicInstructor,
     academicDepartment,
     subject,
-    section,
     instructor,
     maxCapacity,
     scheduleBlocks,
@@ -187,20 +226,6 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
       'This subject is already offered in this semester registration!',
-    );
-  }
-
-  const isSameOfferedSubjectExistsWithSameRegisteredSemesterWithSameSection =
-    await OfferedSubject.findOne({
-      semesterRegistration,
-      subject,
-      section,
-    }).select('_id');
-
-  if (isSameOfferedSubjectExistsWithSameRegisteredSemesterWithSameSection) {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      'Offered subject with the same section already exists!',
     );
   }
 
@@ -304,7 +329,7 @@ const getAllOfferedSubjectsFromDB = async (
   }
 
   const offeredSubjectQuery = new QueryBuilder(
-    buildOfferedSubjectQuery(queryObj, userId, role),
+    buildOfferedSubjectQuery(queryObj),
     queryObj,
   )
     .filter()

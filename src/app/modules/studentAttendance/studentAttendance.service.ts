@@ -35,10 +35,10 @@ const submitStudentAttendanceIntoDB = async (
     throw new AppError(StatusCodes.FORBIDDEN, 'You are forbidden !');
   }
 
-  if (!['ONGOING', 'COMPLETED'].includes(classSession.status)) {
+  if (classSession.status !== 'ONGOING') {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      `Attendance can not be submitted because class is ${classSession.status}`,
+      `Attendance can be submitted only while the class is ONGOING. Current status is ${classSession.status}.`,
     );
   }
 
@@ -193,10 +193,10 @@ const updateStudentAttendanceIntoDB = async (
     throw new AppError(StatusCodes.FORBIDDEN, 'You are forbidden !');
   }
 
-  if (classSession.status === 'CANCELLED') {
+  if (classSession.status !== 'ONGOING') {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      'Attendance can not be updated for a cancelled class',
+      `Attendance can be updated only while the class is ONGOING. Current status is ${classSession.status}.`,
     );
   }
 
@@ -267,7 +267,7 @@ const getClassAttendanceFromDB = async (
   const classSession = await ClassSession.findById(classSessionId)
     .populate('subject', 'title code')
     .populate('instructor', 'id name designation')
-    .populate('offeredSubject', 'section days startTime endTime')
+    .populate('offeredSubject', 'days startTime endTime')
     .populate('semesterRegistration', 'status shift startDate endDate');
 
   if (!classSession) {

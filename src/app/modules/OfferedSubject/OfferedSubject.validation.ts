@@ -24,7 +24,6 @@ const createOfferedSubjectValidationSchema = z.object({
     academicDepartment: z.string(),
     subject: z.string(),
     instructor: z.string(),
-    section: positiveIntegerSchema('Section'),
     maxCapacity: positiveIntegerSchema('Max capacity'),
     scheduleBlocks: z
       .array(scheduleBlockSchema)
