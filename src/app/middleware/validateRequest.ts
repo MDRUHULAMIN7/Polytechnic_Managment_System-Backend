@@ -10,6 +10,24 @@ type ParsedRequestParts = {
   headers?: Request['headers'];
 };
 
+const syncReadonlyRequestObject = (
+  currentValue: Request['query'],
+  nextValue?: Request['query'],
+) => {
+  if (!nextValue || currentValue === nextValue) {
+    return;
+  }
+
+  const currentQuery = currentValue as Record<string, unknown>;
+  const parsedQuery = nextValue as Record<string, unknown>;
+
+  for (const key of Object.keys(currentQuery)) {
+    delete currentQuery[key];
+  }
+
+  Object.assign(currentQuery, parsedQuery);
+};
+
 const validateRequest = (schema: ZodTypeAny) => {
   return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
     const parsed = (await schema.parseAsync({
@@ -22,7 +40,7 @@ const validateRequest = (schema: ZodTypeAny) => {
 
     req.body = parsed.body ?? req.body;
     req.params = parsed.params ?? req.params;
-    req.query = parsed.query ?? req.query;
+    syncReadonlyRequestObject(req.query, parsed.query);
 
     next();
   });
