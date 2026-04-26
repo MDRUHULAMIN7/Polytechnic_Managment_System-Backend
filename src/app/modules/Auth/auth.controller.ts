@@ -93,12 +93,13 @@ const logout = catchAsync(async (_req, res) => {
 });
 const forgetPassword = catchAsync(async (req, res) => {
   const userId = req.body.id;
-  const result = await AuthServices.forgetPassword(userId);
+  await AuthServices.forgetPassword(userId);
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
-    message: 'Reset link is generated succesfully!',
-    data: result,
+    message:
+      'If the account exists, a password reset link will be sent to the registered email address.',
+    data: null,
   });
 });
 

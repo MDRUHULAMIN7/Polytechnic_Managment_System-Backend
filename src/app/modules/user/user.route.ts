@@ -59,6 +59,7 @@ validateRequest(studentValidations.createStudentZodValidationSchema),
 userControllers.createStudent);
 
 router.post('/create-instructor',
+  auth(USER_ROLE.admin,USER_ROLE.superAdmin),
   upload.single('file'),
     (req: Request, res: Response, next: NextFunction) => {
     const { data, instructor, instructorData, password } = req.body ?? {};
@@ -108,7 +109,7 @@ router.post('/create-instructor',
       );
     }
   },
-  auth(USER_ROLE.admin,USER_ROLE.superAdmin),validateRequest(instructorValidations.createInstructorValidationSchema) ,userControllers.createInstructor);
+  validateRequest(instructorValidations.createInstructorValidationSchema) ,userControllers.createInstructor);
 
 router.post(
   '/create-admin',

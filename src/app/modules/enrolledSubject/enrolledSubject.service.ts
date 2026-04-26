@@ -538,7 +538,7 @@ const publishOfferedSubjectFinalResultIntoDB = async (
   }
 
   const actor = await resolveActor(userId, role);
-  const offeredSubject = await ensureOfferedSubjectAccess(
+  await ensureOfferedSubjectAccess(
     payload.offeredSubject,
     actor,
   );

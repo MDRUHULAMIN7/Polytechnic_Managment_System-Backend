@@ -6,28 +6,39 @@ import seedSuperAdmin from './app/DB/index.js';
 import { socketService } from './app/socket/socket.service.js';
 import { NotificationService } from './app/modules/notification/notification.service.js';
 import { syncRoomIndexes } from './app/modules/room/room.model.js';
+import { logger } from './app/utils/logger.js';
 
 let server: Server;
 async function main() {
   try {
     await mongoose.connect(config.database_url as string);
     await syncRoomIndexes();
-    seedSuperAdmin();
+    await seedSuperAdmin();
     void NotificationService.backfillRetentionIntoDB().catch((error) => {
-      console.error('Notification retention backfill failed.', error);
+      logger.error('Notification retention backfill failed.', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
     const httpServer = createServer(app);
     socketService.initialize(httpServer);
     server = httpServer.listen(config.port, () => {
-      console.log(`Example app listening on port ${config.port}`);
+      logger.info('Server started successfully.', {
+        port: config.port,
+        environment: config.NODE_ENV,
+      });
     });
   } catch (error) {
-    console.log('ruhul', error, 'ruhul');
+    logger.error('Server startup failed.', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    process.exit(1);
   }
 }
 main();
-process.on('unhandledRejection', () => {
-  console.log(`unahandledRejection is detected , shutting down ...`);
+process.on('unhandledRejection', (error) => {
+  logger.error('Unhandled promise rejection detected. Shutting down.', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   if (server) {
     server.close(() => {
       process.exit(1);
@@ -36,7 +47,9 @@ process.on('unhandledRejection', () => {
   process.exit(1);
 });
 
-process.on('uncaughtException', () => {
-  console.log(` uncaughtException is detected , shutting down ...`);
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception detected. Shutting down.', {
+    error: error instanceof Error ? error.message : String(error),
+  });
   process.exit(1);
 });

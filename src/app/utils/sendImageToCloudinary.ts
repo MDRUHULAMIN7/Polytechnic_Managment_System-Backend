@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import os from 'os';
 import config from '../config/index.js';
+import { logger } from './logger.js';
 
 cloudinary.config({
   cloud_name: config.cloudinary_cloud_name,
@@ -36,14 +37,13 @@ export const sendImageToCloudinary = (
         // delete a file asynchronously
         fs.unlink(path, (err) => {
           if (err) {
-            // eslint-disable-next-line no-undef
-            const unlinkError = err as NodeJS.ErrnoException;
+            const unlinkError = err as { code?: string; message?: string };
             // Ignore "already removed" temp file case.
             if (unlinkError.code !== 'ENOENT') {
-              console.error(
-                'Failed to delete temp upload file:',
-                unlinkError.message,
-              );
+              logger.warn('Failed to delete temp upload file.', {
+                path,
+                error: unlinkError.message,
+              });
             }
           }
         });

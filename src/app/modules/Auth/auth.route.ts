@@ -4,10 +4,19 @@ import { AuthControllers } from './auth.controller.js';
 import validateRequest from '../../middleware/validateRequest.js';
 import { USER_ROLE } from '../user/user.constant.js';
 import auth from '../../middleware/auth.js';
+import { createRateLimit } from '../../middleware/rateLimit.js';
+import config from '../../config/index.js';
 const router = express.Router();
+
+const authRateLimit = createRateLimit({
+  name: 'auth-route',
+  windowMs: config.auth_rate_limit_window_ms,
+  max: config.auth_rate_limit_max,
+});
 
 router.post(
   '/login',
+  authRateLimit,
   validateRequest(AuthValidation.loginValidationSchema),
   AuthControllers.loginUser,
 );
@@ -33,6 +42,7 @@ router.post(
 router.post('/logout', AuthControllers.logout);
 router.post(
   '/forget-password',
+  authRateLimit,
   validateRequest(AuthValidation.forgetPasswordValidationSchema),
   AuthControllers.forgetPassword,
 );

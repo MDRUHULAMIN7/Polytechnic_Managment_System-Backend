@@ -29,30 +29,40 @@ const getMissingOfferedSubjectReasons = async ({
   const subjectDocs = await Subject.find({
     _id: { $in: subjectIds },
   }).select('_id title');
+  const offeredSubjectDocs = await OfferedSubject.find({
+    subject: { $in: subjectIds },
+  }).select(
+    'subject semesterRegistration academicSemester academicDepartment academicInstructor maxCapacity',
+  );
 
   const subjectTitleMap = new Map(
     subjectDocs.map((subject) => [subject._id.toString(), subject.title]),
   );
+  const offeredBySubjectId = new Map<string, (typeof offeredSubjectDocs)>();
+
+  for (const offeredSubjectDoc of offeredSubjectDocs) {
+    const bucket = offeredBySubjectId.get(offeredSubjectDoc.subject.toString()) ?? [];
+    bucket.push(offeredSubjectDoc);
+    offeredBySubjectId.set(offeredSubjectDoc.subject.toString(), bucket);
+  }
 
   const reasons: string[] = [];
 
   for (const subjectId of subjectIds) {
     const subjectLabel = `${subjectTitleMap.get(subjectId) || 'Subject'} (${subjectId})`;
-
-    const hasAnyOffered = await OfferedSubject.exists({
-      subject: subjectId,
-    });
+    const subjectOfferings = offeredBySubjectId.get(subjectId) ?? [];
+    const hasAnyOffered = subjectOfferings.length > 0;
 
     if (!hasAnyOffered) {
       reasons.push(`${subjectLabel}: not offered yet`);
       continue;
     }
 
-    const hasSameSemester = await OfferedSubject.exists({
-      subject: subjectId,
-      semesterRegistration,
-      academicSemester,
-    });
+    const hasSameSemester = subjectOfferings.some(
+      (offeredSubjectDoc) =>
+        offeredSubjectDoc.semesterRegistration.toString() === semesterRegistration &&
+        offeredSubjectDoc.academicSemester.toString() === academicSemester,
+    );
 
     if (!hasSameSemester) {
       reasons.push(
@@ -61,13 +71,13 @@ const getMissingOfferedSubjectReasons = async ({
       continue;
     }
 
-    const hasDepartmentInstructorMatch = await OfferedSubject.exists({
-      subject: subjectId,
-      semesterRegistration,
-      academicSemester,
-      academicDepartment,
-      academicInstructor,
-    });
+    const hasDepartmentInstructorMatch = subjectOfferings.some(
+      (offeredSubjectDoc) =>
+        offeredSubjectDoc.semesterRegistration.toString() === semesterRegistration &&
+        offeredSubjectDoc.academicSemester.toString() === academicSemester &&
+        offeredSubjectDoc.academicDepartment.toString() === academicDepartment &&
+        offeredSubjectDoc.academicInstructor.toString() === academicInstructor,
+    );
 
     if (!hasDepartmentInstructorMatch) {
       reasons.push(
@@ -76,14 +86,14 @@ const getMissingOfferedSubjectReasons = async ({
       continue;
     }
 
-    const hasSeat = await OfferedSubject.exists({
-      subject: subjectId,
-      semesterRegistration,
-      academicSemester,
-      academicDepartment,
-      academicInstructor,
-      maxCapacity: { $gt: 0 },
-    });
+    const hasSeat = subjectOfferings.some(
+      (offeredSubjectDoc) =>
+        offeredSubjectDoc.semesterRegistration.toString() === semesterRegistration &&
+        offeredSubjectDoc.academicSemester.toString() === academicSemester &&
+        offeredSubjectDoc.academicDepartment.toString() === academicDepartment &&
+        offeredSubjectDoc.academicInstructor.toString() === academicInstructor &&
+        offeredSubjectDoc.maxCapacity > 0,
+    );
 
     if (!hasSeat) {
       reasons.push(`${subjectLabel}: seat full (maxCapacity = 0)`);

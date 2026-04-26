@@ -7,34 +7,24 @@ import config from '../../config/index.js';
 import { createToken, verifyToken } from './auth.utils.js';
 import { type JwtPayload, type SignOptions } from 'jsonwebtoken';
 import { sendEmail } from '../../utils/sendEmail.js';
+import { logger } from '../../utils/logger.js';
+
+const INVALID_CREDENTIALS_MESSAGE = 'Invalid credentials.';
+const INVALID_SESSION_MESSAGE = 'Invalid session. Please log in again.';
+const INVALID_PASSWORD_RESET_MESSAGE = 'Invalid or expired password reset request.';
 
 const loginUser = async (payload: TLoginUser) => {
   // checking if the user is exist
   const user = await User.isUserExistsByCustomId(payload.id);
 
-  if (!user) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'This user is not found !');
-  }
-  // checking if the user is already deleted
-
-  const isDeleted = user?.isDeleted;
-
-  if (isDeleted) {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is deleted !');
-  }
-
-  // checking if the user is blocked
-
-  const userStatus = user?.status;
-
-  if (userStatus === 'blocked') {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is blocked ! !');
+  if (!user || user.isDeleted || user.status === 'blocked') {
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_CREDENTIALS_MESSAGE);
   }
 
   //checking if the password is correct
 
   if (!(await User.isPasswordMatched(payload?.password, user?.password)))
-    throw new AppError(StatusCodes.FORBIDDEN, 'Password do not matched');
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_CREDENTIALS_MESSAGE);
 
   //create token and sent to the  client
 
@@ -124,21 +114,8 @@ const refreshToken = async (token: string) => {
   // checking if the user is exist
   const user = await User.isUserExistsByCustomId(userId);
 
-  if (!user) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'This user is not found !');
-  }
-  // checking if the user is already deleted
-  const isDeleted = user?.isDeleted;
-
-  if (isDeleted) {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is deleted !');
-  }
-
-  // checking if the user is blocked
-  const userStatus = user?.status;
-
-  if (userStatus === 'blocked') {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is blocked ! !');
+  if (!user || user.isDeleted || user.status === 'blocked') {
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_SESSION_MESSAGE);
   }
 
   if (
@@ -169,21 +146,8 @@ const forgetPassword = async (userId: string) => {
   // checking if the user is exist
   const user = await User.isUserExistsByCustomId(userId);
 
-  if (!user) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'This user is not found !');
-  }
-  // checking if the user is already deleted
-  const isDeleted = user?.isDeleted;
-
-  if (isDeleted) {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is deleted !');
-  }
-
-  // checking if the user is blocked
-  const userStatus = user?.status;
-
-  if (userStatus === 'blocked') {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is blocked ! !');
+  if (!user || user.isDeleted || user.status === 'blocked') {
+    return null;
   }
 
   const jwtPayload = {
@@ -198,25 +162,17 @@ const forgetPassword = async (userId: string) => {
   );
 
   const resetUILink = `${config.reset_pass_ui_link}?id=${user.id}&token=${resetToken}`;
-  const deliveryEmail =
-    config.password_reset_email_override?.trim() || user.email;
-
+  const deliveryEmail = config.password_reset_email_override?.trim() || user.email;
 
   try {
-    const mailInfo = await sendEmail(deliveryEmail, resetUILink);
-
-    return {
-      accountEmail: user.email,
-      deliveryEmail,
-      ...(config.NODE_ENV !== 'production'
-        ? {
-            debugResetLink: resetUILink,
-            mailInfo,
-          }
-        : {}),
-    };
+    await sendEmail(deliveryEmail, resetUILink);
+    return null;
   } catch (error) {
-   
+    logger.error('Password reset email delivery failed.', {
+      userId: user.id,
+      deliveryEmail,
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 };
@@ -228,27 +184,14 @@ const resetPassword = async (
   // checking if the user is exist
   const user = await User.isUserExistsByCustomId(payload?.id);
 
-  if (!user) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'This user is not found !');
-  }
-  // checking if the user is already deleted
-  const isDeleted = user?.isDeleted;
-
-  if (isDeleted) {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is deleted !');
-  }
-
-  // checking if the user is blocked
-  const userStatus = user?.status;
-
-  if (userStatus === 'blocked') {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is blocked ! !');
+  if (!user || user.isDeleted || user.status === 'blocked') {
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_PASSWORD_RESET_MESSAGE);
   }
 
   const decoded = verifyToken(token, config.jwt_access_secret as string);
 
   if (payload.id !== decoded.userId) {
-    throw new AppError(StatusCodes.FORBIDDEN, 'You are forbidden!');
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_PASSWORD_RESET_MESSAGE);
   }
 
   //hash new password
@@ -274,5 +217,5 @@ export const AuthServices = {
   changePassword,
   refreshToken,
   forgetPassword,
-  resetPassword
+  resetPassword,
 };

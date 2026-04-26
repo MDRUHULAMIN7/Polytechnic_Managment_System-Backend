@@ -7,6 +7,7 @@ import { createToken } from '../modules/Auth/auth.utils.js';
 
 const isProduction = config.NODE_ENV === 'production';
 const sameSiteMode: 'none' | 'lax' = isProduction ? 'none' : 'lax';
+const INVALID_SESSION_MESSAGE = 'Invalid session. Please log in again.';
 
 export const accessCookieOptions = {
   secure: isProduction,
@@ -28,23 +29,15 @@ export async function validateDecodedUser(decoded: JwtPayload) {
 
   const user = await User.isUserExistsByCustomId(userId);
 
-  if (!user) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'This user is not found !');
-  }
-
-  if (user?.isDeleted) {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is deleted !');
-  }
-
-  if (user?.status === 'blocked') {
-    throw new AppError(StatusCodes.FORBIDDEN, 'This user is blocked ! !');
+  if (!user || user.isDeleted || user.status === 'blocked') {
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_SESSION_MESSAGE);
   }
 
   if (
     user.passwordChangedAt &&
     User.isJWTIssuedBeforePasswordChanged(user.passwordChangedAt, iat as number)
   ) {
-    throw new AppError(StatusCodes.UNAUTHORIZED, 'You are not authorized !');
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_SESSION_MESSAGE);
   }
 
   return user;
@@ -86,7 +79,7 @@ export async function resolveSessionUser({
   }
 
   if (!refreshToken) {
-    throw new AppError(StatusCodes.UNAUTHORIZED, 'Invalid or expired token!');
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_SESSION_MESSAGE);
   }
 
   const refreshedDecoded = jwt.verify(

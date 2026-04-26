@@ -3,6 +3,9 @@ import { AcademicSemester } from '../academicSemester/academicSemesterModel.js';
 import { createOpenRouterChatCompletion } from '../../helper/openRouter.js';
 import { Instructor } from '../Instructor/Instructor.model.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
+import AppError from '../../errors/AppError.js';
+import { StatusCodes } from 'http-status-codes';
+import { logger } from '../../utils/logger.js';
 import type {
   TChatbotIntent,
   TChatbotMessage,
@@ -17,6 +20,17 @@ const DEFAULT_SUGGESTIONS = [
 ];
 
 const CHAT_HISTORY_LIMIT = 8;
+const CHATBOT_BLOCKED_HINTS = [
+  'ignore previous instructions',
+  'system prompt',
+  'reveal prompt',
+  'api key',
+  'exploit',
+  'bypass',
+  'malware',
+  'bomb',
+  'hack',
+];
 
 const DEPARTMENT_RECOMMENDATION_HINTS = [
   'which department',
@@ -193,6 +207,13 @@ const formatPersonName = (name?: {
 
 const includesAny = (source: string, keywords: string[]) =>
   keywords.some((keyword) => source.includes(keyword));
+
+const containsBlockedPrompt = (question: string) => {
+  const normalizedQuestion = normalizeText(question);
+  return CHATBOT_BLOCKED_HINTS.some((keyword) =>
+    normalizedQuestion.includes(normalizeText(keyword)),
+  );
+};
 
 const sanitizeSuggestions = (value: unknown) => {
   if (!Array.isArray(value)) {
@@ -816,10 +837,19 @@ const generateReply = async (
   question: string,
   messages: TChatbotMessage[] = [],
 ): Promise<TChatbotReply> => {
+  if (containsBlockedPrompt(question)) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'This assistant only answers public academic and campus-related questions.',
+    );
+  }
+
   try {
     return await buildAiReply(question, messages);
   } catch (error) {
-    console.error('OpenRouter chatbot fallback engaged.', error);
+    logger.warn('OpenRouter chatbot fallback engaged.', {
+      error: error instanceof Error ? error.message : String(error),
+    });
 
     const fallbackReply = await generateRuleBasedReply(question);
 

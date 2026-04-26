@@ -8,6 +8,7 @@ import handleValidationError from '../errors/handleValidationError.js';
 import handleCastError from '../errors/handleCastError.js';
 import handleDuplicateError from '../errors/handleDuplicateError.js';
 import AppError from '../errors/AppError.js';
+import { logger } from '../utils/logger.js';
 
 const globalErrorHandeler: ErrorRequestHandler = (
   err,
@@ -64,10 +65,14 @@ const globalErrorHandeler: ErrorRequestHandler = (
     ];
   }
 
-  console.error(
-    `[Error] ${req.method} ${req.originalUrl} -> ${statusCode} ${message}`,
-    err,
-  );
+  logger.error('Request failed.', {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl,
+    statusCode,
+    message,
+    stack: err instanceof Error ? err.stack : undefined,
+  });
 
   return res.status(statusCode).json({
     success: false,
