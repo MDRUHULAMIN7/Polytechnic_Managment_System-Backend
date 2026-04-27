@@ -23,6 +23,12 @@ const roomSchema = new Schema<TRoom>(
       required: true,
       min: 1,
     },
+    roomType: {
+      type: String,
+      enum: ['theory', 'practical', 'both'],
+      default: 'theory',
+      required: true,
+    },
     floor: {
       type: Number,
       min: 0,

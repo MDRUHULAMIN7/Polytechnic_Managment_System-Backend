@@ -3,6 +3,7 @@ export type TRoom = {
   roomNumber: number;
   buildingNumber: number;
   capacity: number;
+  roomType: 'theory' | 'practical' | 'both';
   floor?: number;
   isActive?: boolean;
   createdAt?: Date;

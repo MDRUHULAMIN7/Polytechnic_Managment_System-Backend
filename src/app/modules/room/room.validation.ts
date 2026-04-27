@@ -14,6 +14,9 @@ const createRoomValidationSchema = z.object({
     roomNumber: requiredPositiveInteger('Room number'),
     buildingNumber: requiredPositiveInteger('Building number'),
     capacity: requiredPositiveInteger('Capacity'),
+    roomType: z.enum(['theory', 'practical', 'both'], {
+      message: 'Room type is required and must be theory, practical, or both.',
+    }),
     floor: z
       .number({
         error: 'Floor must be a valid number.',
@@ -31,6 +34,11 @@ const updateRoomValidationSchema = z.object({
     roomNumber: requiredPositiveInteger('Room number').optional(),
     buildingNumber: requiredPositiveInteger('Building number').optional(),
     capacity: requiredPositiveInteger('Capacity').optional(),
+    roomType: z
+      .enum(['theory', 'practical', 'both'], {
+        message: 'Room type must be theory, practical, or both.',
+      })
+      .optional(),
     floor: z
       .number({
         error: 'Floor must be a valid number.',

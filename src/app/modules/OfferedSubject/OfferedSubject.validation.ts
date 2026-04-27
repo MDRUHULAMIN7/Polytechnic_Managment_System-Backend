@@ -54,8 +54,36 @@ const previewOfferedSubjectConflictValidationSchema = z.object({
   }),
 });
 
+const planOfferedSubjectScheduleValidationSchema = z.object({
+  body: z.object({
+    semesterRegistration: z.string(),
+    academicInstructor: z.string(),
+    academicDepartment: z.string(),
+    subject: z.string(),
+    instructor: z.string(),
+    maxCapacity: positiveIntegerSchema('Max capacity'),
+  }),
+});
+
+const planBulkOfferedSubjectScheduleValidationSchema = z.object({
+  body: z.object({
+    semesterRegistration: z.string(),
+    academicInstructor: z.string(),
+    academicDepartment: z.string(),
+    entries: z.array(
+      z.object({
+        subject: z.string(),
+        instructor: z.string(),
+        maxCapacity: positiveIntegerSchema('Max capacity'),
+      }),
+    ).min(1, 'At least one subject entry is required for bulk planning.'),
+  }),
+});
+
 export const OfferedSubjectValidations = {
   createOfferedSubjectValidationSchema,
   updateOfferedSubjectValidationSchema,
   previewOfferedSubjectConflictValidationSchema,
+  planOfferedSubjectScheduleValidationSchema,
+  planBulkOfferedSubjectScheduleValidationSchema,
 };

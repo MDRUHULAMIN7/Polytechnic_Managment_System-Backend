@@ -32,6 +32,24 @@ router.post(
   OfferedSubjectControllers.previewOfferedSubjectConflicts,
 );
 
+router.post(
+  '/plan-schedule',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  validateRequest(
+    OfferedSubjectValidations.planOfferedSubjectScheduleValidationSchema,
+  ),
+  OfferedSubjectControllers.planOfferedSubjectSchedule,
+);
+
+router.post(
+  '/plan-bulk-schedule',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  validateRequest(
+    OfferedSubjectValidations.planBulkOfferedSubjectScheduleValidationSchema,
+  ),
+  OfferedSubjectControllers.planBulkOfferedSubjectSchedule,
+);
+
 router.get(
   '/:id',
   auth(

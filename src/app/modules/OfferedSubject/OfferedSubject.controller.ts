@@ -1,8 +1,7 @@
-import { StatusCodes } from "http-status-codes";
-import catchAsync from "../../utils/CatchAsync.js";
-import sendResponse from "../../utils/sendResponse.js";
-import { OfferedSubjectServices } from "./OfferedSubject.service.js";
-
+import { StatusCodes } from 'http-status-codes';
+import catchAsync from '../../utils/CatchAsync.js';
+import sendResponse from '../../utils/sendResponse.js';
+import { OfferedSubjectServices } from './OfferedSubject.service.js';
 
 const createOfferedSubject = catchAsync(async (req, res) => {
   const result = await OfferedSubjectServices.createOfferedSubjectIntoDB(
@@ -47,30 +46,51 @@ const getMyOfferedSubject = catchAsync(async (req, res) => {
   });
 });
 
+const getSingleOfferedSubjects = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await OfferedSubjectServices.getSingleOfferedSubjectFromDB(id);
 
-const getSingleOfferedSubjects = catchAsync(
-  async (req, res) => {
-    const { id } = req.params;
-    const result = await OfferedSubjectServices.getSingleOfferedSubjectFromDB(id);
-
-    sendResponse(res, {
-      statusCode: StatusCodes.OK,
-      success: true,
-      message: 'OfferedSubject fetched successfully',
-      data: result,
-    });
-  },
-);
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'OfferedSubject fetched successfully',
+    data: result,
+  });
+});
 
 const previewOfferedSubjectConflicts = catchAsync(async (req, res) => {
-  const result = await OfferedSubjectServices.previewOfferedSubjectConflictsIntoDB(
+  const result =
+    await OfferedSubjectServices.previewOfferedSubjectConflictsIntoDB(req.body);
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Offered subject conflict preview generated successfully',
+    data: result,
+  });
+});
+
+const planOfferedSubjectSchedule = catchAsync(async (req, res) => {
+  const result = await OfferedSubjectServices.planOfferedSubjectScheduleIntoDB(
     req.body,
   );
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,
     success: true,
-    message: 'Offered subject conflict preview generated successfully',
+    message: 'Offered subject schedule plan generated successfully',
+    data: result,
+  });
+});
+
+const planBulkOfferedSubjectSchedule = catchAsync(async (req, res) => {
+  const result =
+    await OfferedSubjectServices.planBulkOfferedSubjectScheduleIntoDB(req.body);
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Bulk offered subject schedule plan generated successfully',
     data: result,
   });
 });
@@ -91,34 +111,35 @@ const updateOfferedSubject = catchAsync(async (req, res) => {
   });
 });
 
-const deleteOfferedSubjectFromDB = catchAsync(
-  async (req, res) => {
-    const { id } = req.params;
-    const result = await OfferedSubjectServices.deleteOfferedSubjectFromDB(id);
+const deleteOfferedSubjectFromDB = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await OfferedSubjectServices.deleteOfferedSubjectFromDB(id);
 
-    if (result?._id) {
-      const { ClassSession } = await import('../classSession/classSession.model.js');
-      await ClassSession.deleteMany({
-        offeredSubject: result._id,
-        status: { $in: ['SCHEDULED', 'MISSED', 'CANCELLED'] },
-      });
-    }
-
-    sendResponse(res, {
-      statusCode: StatusCodes.OK,
-      success: true,
-      message: 'OfferedSubject deleted successfully',
-      data: result,
+  if (result?._id) {
+    const { ClassSession } =
+      await import('../classSession/classSession.model.js');
+    await ClassSession.deleteMany({
+      offeredSubject: result._id,
+      status: { $in: ['SCHEDULED', 'MISSED', 'CANCELLED'] },
     });
-  },
-);
+  }
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'OfferedSubject deleted successfully',
+    data: result,
+  });
+});
 
 export const OfferedSubjectControllers = {
   createOfferedSubject,
   getAllOfferedSubjects,
-  getMyOfferedSubject ,
+  getMyOfferedSubject,
   getSingleOfferedSubjects,
   previewOfferedSubjectConflicts,
+  planOfferedSubjectSchedule,
+  planBulkOfferedSubjectSchedule,
   updateOfferedSubject,
   deleteOfferedSubjectFromDB,
 };

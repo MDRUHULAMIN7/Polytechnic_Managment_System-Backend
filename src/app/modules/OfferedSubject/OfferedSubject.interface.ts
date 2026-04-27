@@ -57,3 +57,56 @@ export type TSchedule = {
   startTime: string;
   endTime: string;
 };
+
+export type TOfferedSubjectSchedulePlanInput = {
+  semesterRegistration: Types.ObjectId;
+  academicInstructor: Types.ObjectId;
+  academicDepartment: Types.ObjectId;
+  subject: Types.ObjectId;
+  instructor: Types.ObjectId;
+  maxCapacity: number;
+};
+
+export type TOfferedSubjectSchedulePlanSuggestionBlock = Omit<
+  TScheduleBlockInput,
+  'room'
+> & {
+  room: string;
+  roomLabel: string;
+  periodNumbers: number[];
+  startTimeSnapshot: string;
+  endTimeSnapshot: string;
+};
+
+export type TOfferedSubjectSchedulePlan = {
+  summary: string;
+  reasoning: string[];
+  warnings: string[];
+  suggestedBlocks: TOfferedSubjectSchedulePlanSuggestionBlock[];
+  planningMeta: {
+    subjectTitle: string;
+    subjectCode: number;
+    credits: number;
+    subjectType: string;
+    preferredWorkingDays: TDays[];
+    totalExistingOfferedSubjects: number;
+  };
+};
+
+export type TBulkOfferedSubjectSchedulePlanEntry = {
+  subject: Types.ObjectId;
+  instructor: Types.ObjectId;
+  maxCapacity: number;
+};
+
+export type TBulkOfferedSubjectSchedulePlanInput = {
+  semesterRegistration: Types.ObjectId;
+  academicInstructor: Types.ObjectId;
+  academicDepartment: Types.ObjectId;
+  entries: TBulkOfferedSubjectSchedulePlanEntry[];
+};
+
+export type TBulkOfferedSubjectSchedulePlan = {
+  plans: (TOfferedSubjectSchedulePlan & { subjectId: string })[];
+  summary: string;
+};

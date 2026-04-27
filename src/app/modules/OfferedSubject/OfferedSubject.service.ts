@@ -1,7 +1,17 @@
 import { StatusCodes } from 'http-status-codes';
+import { Types } from 'mongoose';
 import AppError from '../../errors/AppError.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
-import type { TOfferedSubject, TScheduleBlockInput } from './OfferedSubject.interface.js';
+import type {
+  TOfferedSubject,
+  TOfferedSubjectSchedulePlan,
+  TOfferedSubjectSchedulePlanInput,
+  TOfferedSubjectSchedulePlanSuggestionBlock,
+  TScheduleBlock,
+  TScheduleBlockInput,
+  TBulkOfferedSubjectSchedulePlanInput,
+  TBulkOfferedSubjectSchedulePlan,
+} from './OfferedSubject.interface.js';
 import { AcademicInstructor } from '../academicInstructor/academicInstructor.model.js';
 import { AcademicDepartment } from '../academicDepartment/academicDepartment.model.js';
 import { Subject } from '../subject/subject.model.js';
@@ -16,10 +26,244 @@ import {
   cloneMarkingScheme,
   ensureAssessmentComponentsComplete,
 } from '../subject/subject.marking.js';
+import { PeriodConfigServices } from '../periodConfig/periodConfig.service.js';
+import { Room } from '../room/room.model.js';
 import {
   collectScheduleConflicts,
+  doScheduleBlocksOverlap,
   resolveSchedulePayload,
 } from './OfferedSubject.utils.js';
+import { DaySortOrder, timeToMinutes } from './OfferedSubject.constant.js';
+
+const PLANNER_WORKING_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'] as const;
+
+type TPlannerPeriod = {
+  periodNo: number;
+  startTime: string;
+  endTime: string;
+};
+
+type TPlannerRoom = {
+  _id: Types.ObjectId;
+  roomName: string;
+  roomNumber: number;
+  buildingNumber: number;
+  capacity: number;
+  roomType: 'theory' | 'practical' | 'both';
+};
+
+type TPlannerBlueprint = {
+  classType: 'theory' | 'practical' | 'tutorial';
+  periodCount: number;
+  label: string;
+  minimumPeriodCount?: number;
+};
+
+type TPlannerCandidateBlock = TScheduleBlock & {
+  roomLabel: string;
+  instructorId: string;
+};
+
+const buildRoomLabel = (room: TPlannerRoom) =>
+  `${room.roomName} | Building ${room.buildingNumber} | Room ${room.roomNumber} | Cap ${room.capacity}`;
+
+const buildSubjectMeetingBlueprint = (subject: {
+  credits: number;
+  subjectType: string;
+  markingScheme?: {
+    practicalContinuous?: number;
+    practicalFinal?: number;
+  };
+}) => {
+  const roundedCredits = Math.max(1, Math.round(subject.credits || 1));
+  const practicalMarks =
+    (subject.markingScheme?.practicalContinuous ?? 0) +
+    (subject.markingScheme?.practicalFinal ?? 0);
+  const includesPractical =
+    practicalMarks > 0 ||
+    [
+      'THEORY_PRACTICAL',
+      'PRACTICAL_ONLY',
+      'PROJECT',
+      'INDUSTRIAL_ATTACHMENT',
+    ].includes(subject.subjectType);
+  const reasoning: string[] = [
+    `Used ${roundedCredits} weekly meeting target from the subject credit value.`,
+  ];
+
+  let blocks: TPlannerBlueprint[] = [];
+
+  switch (subject.subjectType) {
+    case 'THEORY':
+      blocks = Array.from({ length: roundedCredits }, (_, index) => ({
+        classType: 'theory' as const,
+        periodCount: 1,
+        label: `Theory class ${index + 1}`,
+      }));
+      reasoning.push(
+        'Theory subjects were spread as one-period meetings across separate days.',
+      );
+      break;
+    case 'THEORY_PRACTICAL':
+      blocks = [
+        {
+          classType: 'practical' as const,
+          periodCount: 3,
+          minimumPeriodCount: 2,
+          label: 'Practical class',
+        },
+        ...Array.from(
+          { length: Math.max(0, roundedCredits - 1) },
+          (_, index) => ({
+            classType: 'theory' as const,
+            periodCount: 1,
+            label: `Theory class ${index + 1}`,
+          }),
+        ),
+      ];
+      reasoning.push(
+        'Theory-practical subjects were planned as one lab block plus the remaining theory meetings.',
+      );
+      break;
+    case 'PRACTICAL_ONLY':
+      blocks = Array.from({ length: roundedCredits }, (_, index) => ({
+        classType: 'practical' as const,
+        periodCount: 2,
+        minimumPeriodCount: 1,
+        label: `Practical block ${index + 1}`,
+      }));
+      reasoning.push(
+        'Practical-only subjects were spread across days as lab blocks.',
+      );
+      break;
+    case 'PROJECT':
+      blocks = [
+        {
+          classType: 'tutorial' as const,
+          periodCount: 2,
+          minimumPeriodCount: 1,
+          label: 'Project supervision',
+        },
+        ...Array.from(
+          { length: Math.max(0, roundedCredits - 1) },
+          (_, index) => ({
+            classType: 'practical' as const,
+            periodCount: 2,
+            minimumPeriodCount: 1,
+            label: `Project work block ${index + 1}`,
+          }),
+        ),
+      ];
+      reasoning.push(
+        'Project subjects were balanced between supervision time and work blocks across days.',
+      );
+      break;
+    case 'INDUSTRIAL_ATTACHMENT':
+      blocks = [
+        {
+          classType: 'tutorial' as const,
+          periodCount: 2,
+          minimumPeriodCount: 1,
+          label: 'Attachment briefing',
+        },
+      ];
+      reasoning.push(
+        'Industrial attachment was treated as a briefing-style weekly block.',
+      );
+      break;
+    default:
+      blocks = Array.from(
+        { length: Math.min(roundedCredits, 5) },
+        (_, index) => ({
+          classType: (includesPractical ? 'practical' : 'theory') as
+            | 'practical'
+            | 'theory',
+          periodCount: includesPractical ? 3 : 1,
+          minimumPeriodCount: includesPractical ? 2 : 1,
+          label: `Session ${index + 1}`,
+        }),
+      );
+      reasoning.push(
+        'Fallback planner rules were used because the subject type was not explicitly handled.',
+      );
+      break;
+  }
+
+  if (
+    includesPractical &&
+    !blocks.some((block) => block.classType === 'practical')
+  ) {
+    blocks.push({
+      classType: 'practical',
+      periodCount: 3,
+      minimumPeriodCount: 2,
+      label: 'Practical class',
+    });
+    reasoning.push(
+      'Added one practical block because the marking scheme contains practical marks.',
+    );
+  }
+
+  return {
+    blocks: blocks.sort((left, right) => right.periodCount - left.periodCount),
+    reasoning,
+  };
+};
+
+const buildContiguousPeriodOptions = (
+  periods: TPlannerPeriod[],
+  desiredCount: number,
+) => {
+  const options: Array<{
+    startPeriod: number;
+    periodCount: number;
+    periodNumbers: number[];
+    startTimeSnapshot: string;
+    endTimeSnapshot: string;
+  }> = [];
+
+  for (
+    let startIndex = 0;
+    startIndex <= periods.length - desiredCount;
+    startIndex += 1
+  ) {
+    const selected = periods.slice(startIndex, startIndex + desiredCount);
+    const isContiguous = selected.every((period, index) => {
+      if (index === 0) {
+        return true;
+      }
+      return period.periodNo === selected[index - 1].periodNo + 1;
+    });
+
+    if (!isContiguous) {
+      continue;
+    }
+
+    options.push({
+      startPeriod: selected[0].periodNo,
+      periodCount: desiredCount,
+      periodNumbers: selected.map((period) => period.periodNo),
+      startTimeSnapshot: selected[0].startTime,
+      endTimeSnapshot: selected[selected.length - 1].endTime,
+    });
+  }
+
+  return options;
+};
+
+const sortPlannerBlocks = (blocks: TPlannerCandidateBlock[]) =>
+  [...blocks].sort((left, right) => {
+    const dayDelta =
+      (DaySortOrder[left.day] ?? 0) - (DaySortOrder[right.day] ?? 0);
+    if (dayDelta !== 0) {
+      return dayDelta;
+    }
+
+    return (
+      timeToMinutes(left.startTimeSnapshot) -
+      timeToMinutes(right.startTimeSnapshot)
+    );
+  });
 
 const resolveInstructorIdFromUserId = async (userId: string) => {
   const instructor = await Instructor.findOne({ id: userId }).select('_id');
@@ -73,7 +317,10 @@ const ensureCommonReferencesExist = async (payload: {
   );
 
   if (!isAcademicInstructorExits) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Academic Instructor not found !');
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Academic Instructor not found !',
+    );
   }
 
   const isAcademicDepartmentExits = await AcademicDepartment.findById(
@@ -81,7 +328,10 @@ const ensureCommonReferencesExist = async (payload: {
   );
 
   if (!isAcademicDepartmentExits) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Academic Department not found !');
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Academic Department not found !',
+    );
   }
 
   const isInstructorExits = await Instructor.findById(payload.instructor);
@@ -122,8 +372,12 @@ const fetchComparableOfferedSubjects = async (
 ) => {
   return OfferedSubject.find({
     semesterRegistration: semesterRegistrationId,
-    ...(excludeOfferedSubjectId ? { _id: { $ne: excludeOfferedSubjectId } } : {}),
-  }).select('instructor academicDepartment scheduleBlocks days startTime endTime');
+    ...(excludeOfferedSubjectId
+      ? { _id: { $ne: excludeOfferedSubjectId } }
+      : {}),
+  }).select(
+    'instructor academicDepartment scheduleBlocks days startTime endTime',
+  );
 };
 
 const getRequestedFields = (queryObj: Record<string, unknown>) => {
@@ -144,9 +398,7 @@ const shouldPopulateField = (
   field: string,
 ) => !requestedFields || requestedFields.has(field);
 
-const buildOfferedSubjectQuery = (
-  queryObj: Record<string, unknown>,
-) => {
+const buildOfferedSubjectQuery = (queryObj: Record<string, unknown>) => {
   const requestedFields = getRequestedFields(queryObj);
   let query = OfferedSubject.find();
 
@@ -167,7 +419,10 @@ const buildOfferedSubjectQuery = (
   }
 
   if (shouldPopulateField(requestedFields, 'subject')) {
-    query = query.populate('subject', 'title code credits subjectType markingScheme');
+    query = query.populate(
+      'subject',
+      'title code credits subjectType markingScheme',
+    );
   }
 
   if (shouldPopulateField(requestedFields, 'instructor')) {
@@ -248,7 +503,10 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
   );
 
   if (conflicts.length) {
-    throw new AppError(StatusCodes.CONFLICT, pickFirstConflictMessage(conflicts));
+    throw new AppError(
+      StatusCodes.CONFLICT,
+      pickFirstConflictMessage(conflicts),
+    );
   }
 
   const result = await OfferedSubject.create({
@@ -491,7 +749,9 @@ const getMyOfferedSubjectFromDB = async (
       $addFields: {
         isPreRequisitesFulFilled: {
           $or: [
-            { $eq: [{ $size: { $ifNull: ['$preRequisiteSubjectIds', []] } }, 0] },
+            {
+              $eq: [{ $size: { $ifNull: ['$preRequisiteSubjectIds', []] } }, 0],
+            },
             {
               $setIsSubset: [
                 { $ifNull: ['$preRequisiteSubjectIds', []] },
@@ -580,7 +840,8 @@ const getSingleOfferedSubjectFromDB = async (id: string) => {
     }).sort({ createdAt: -1 });
 
     const preferred =
-      registrations.find((item) => item.status === 'ONGOING') ?? registrations[0];
+      registrations.find((item) => item.status === 'ONGOING') ??
+      registrations[0];
 
     if (preferred) {
       offeredSubject.semesterRegistration = preferred._id;
@@ -595,7 +856,10 @@ const getSingleOfferedSubjectFromDB = async (id: string) => {
     .populate('academicDepartment')
     .populate('subject')
     .populate('instructor')
-    .populate('scheduleBlocks.room', 'roomName roomNumber buildingNumber capacity');
+    .populate(
+      'scheduleBlocks.room',
+      'roomName roomNumber buildingNumber capacity',
+    );
 
   return populated;
 };
@@ -613,7 +877,10 @@ const previewOfferedSubjectConflictsIntoDB = async (payload: {
   ).select('_id');
 
   if (!semesterRegistration) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Semester registration not found.');
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Semester registration not found.',
+    );
   }
 
   const academicDepartment = await AcademicDepartment.findById(
@@ -624,7 +891,9 @@ const previewOfferedSubjectConflictsIntoDB = async (payload: {
     throw new AppError(StatusCodes.NOT_FOUND, 'Academic department not found.');
   }
 
-  const instructor = await Instructor.findById(payload.instructor).select('_id');
+  const instructor = await Instructor.findById(payload.instructor).select(
+    '_id',
+  );
 
   if (!instructor) {
     throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found.');
@@ -657,9 +926,293 @@ const previewOfferedSubjectConflictsIntoDB = async (payload: {
   };
 };
 
+const planOfferedSubjectScheduleIntoDB = async (
+  payload: TOfferedSubjectSchedulePlanInput,
+): Promise<TOfferedSubjectSchedulePlan> => {
+  const {
+    semesterRegistration,
+    academicInstructor,
+    academicDepartment,
+    subject,
+    instructor,
+    maxCapacity,
+  } = payload;
+
+  const references = await ensureCommonReferencesExist({
+    semesterRegistration,
+    academicInstructor,
+    academicDepartment,
+    subject,
+    instructor,
+  });
+
+  if (references.semesterRegistration.status === 'ENDED') {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Schedule planning is only available for active or upcoming semester registrations.',
+    );
+  }
+
+  const selectedSubject = await Subject.findById(subject).select(
+    'title code credits subjectType markingScheme',
+  );
+
+  if (!selectedSubject) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found !');
+  }
+
+  const activePeriodConfig =
+    await PeriodConfigServices.getActivePeriodConfigFromDB();
+  const schedulablePeriods = [...(activePeriodConfig.periods ?? [])]
+    .filter((period) => period.isActive !== false && period.isBreak !== true)
+    .sort((left, right) => left.periodNo - right.periodNo)
+    .map((period) => ({
+      periodNo: period.periodNo,
+      startTime: period.startTime,
+      endTime: period.endTime,
+    }));
+
+  if (!schedulablePeriods.length) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'No schedulable periods were found in the active period configuration.',
+    );
+  }
+
+  const candidateRooms = (await Room.find({
+    isActive: true,
+    capacity: { $gte: maxCapacity },
+  })
+    .select('_id roomName roomNumber buildingNumber capacity roomType')
+    .sort({ capacity: 1, buildingNumber: 1, roomNumber: 1 })) as TPlannerRoom[];
+
+  if (!candidateRooms.length) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'No active room can support the requested maximum capacity.',
+    );
+  }
+
+  const existingSubjects = await fetchComparableOfferedSubjects(
+    semesterRegistration.toString(),
+  );
+
+  const { blocks: blueprintBlocks, reasoning } = buildSubjectMeetingBlueprint({
+    credits: selectedSubject.credits,
+    subjectType: selectedSubject.subjectType,
+    markingScheme: selectedSubject.markingScheme,
+  });
+
+  const plannedBlocks: TPlannerCandidateBlock[] = [];
+  const warnings: string[] = [
+    'Planner used Sunday to Thursday as working days and kept Friday/Saturday free.',
+  ];
+
+  for (const blueprint of blueprintBlocks) {
+    // Filter and Sort rooms based on classType and roomType
+    const isTheoryClass = blueprint.classType === 'theory';
+    const isPracticalClass = blueprint.classType === 'practical';
+
+    const eligibleRooms = candidateRooms.filter((room) => {
+      if (isPracticalClass) {
+        // Practical classes MUST be in practical or both type rooms
+        return room.roomType === 'practical' || room.roomType === 'both';
+      }
+      // Theory classes can use any room (fallback to practical if theory/both full)
+      return true;
+    });
+
+    const sortedRooms = [...eligibleRooms].sort((a, b) => {
+      if (isTheoryClass) {
+        // Priority for theory: theory > both > practical
+        const score = (r: TPlannerRoom) => {
+          if (r.roomType === 'theory') return 0;
+          if (r.roomType === 'both') return 1;
+          return 2;
+        };
+        return score(a) - score(b) || a.capacity - b.capacity;
+      } else if (isPracticalClass) {
+        // Priority for practical: practical > both
+        const score = (r: TPlannerRoom) => {
+          if (r.roomType === 'practical') return 0;
+          if (r.roomType === 'both') return 1;
+          return 2;
+        };
+        return score(a) - score(b) || a.capacity - b.capacity;
+      }
+
+      // Fallback: sort by capacity
+      return a.capacity - b.capacity;
+    });
+
+    const dayOrder = [...PLANNER_WORKING_DAYS].sort((left, right) => {
+      const leftCount = plannedBlocks.filter(
+        (block) => block.day === left,
+      ).length;
+      const rightCount = plannedBlocks.filter(
+        (block) => block.day === right,
+      ).length;
+      if (leftCount !== rightCount) {
+        return leftCount - rightCount;
+      }
+      return (
+        PLANNER_WORKING_DAYS.indexOf(left) - PLANNER_WORKING_DAYS.indexOf(right)
+      );
+    });
+
+    let matchedBlock: TPlannerCandidateBlock | null = null;
+    const periodCountOptions: number[] = [];
+    for (
+      let currentPeriodCount = blueprint.periodCount;
+      currentPeriodCount >=
+      (blueprint.minimumPeriodCount ?? blueprint.periodCount);
+      currentPeriodCount -= 1
+    ) {
+      periodCountOptions.push(currentPeriodCount);
+    }
+
+    for (const day of dayOrder) {
+      for (const periodCount of periodCountOptions) {
+        const periodOptions = buildContiguousPeriodOptions(
+          schedulablePeriods,
+          periodCount,
+        );
+
+        for (const option of periodOptions) {
+          for (const room of sortedRooms) {
+            const candidate: TPlannerCandidateBlock = {
+              classType: blueprint.classType,
+              day,
+              room: room._id,
+              startPeriod: option.startPeriod,
+              periodCount: option.periodCount,
+              periodNumbers: option.periodNumbers,
+              startTimeSnapshot: option.startTimeSnapshot,
+              endTimeSnapshot: option.endTimeSnapshot,
+              roomLabel: buildRoomLabel(room),
+              instructorId: instructor.toString(),
+            };
+
+            const overlapsWithCurrentPlan = plannedBlocks.some((plannedBlock) =>
+              doScheduleBlocksOverlap(plannedBlock, candidate),
+            );
+            if (overlapsWithCurrentPlan) {
+              continue;
+            }
+
+            const conflicts = collectScheduleConflicts(
+              [candidate],
+              existingSubjects,
+              {
+                instructorId: instructor.toString(),
+                academicDepartmentId: academicDepartment.toString(),
+              },
+            );
+
+            if (conflicts.length) {
+              continue;
+            }
+
+            matchedBlock = candidate;
+            if (periodCount < blueprint.periodCount) {
+              warnings.push(
+                `${blueprint.label} was reduced from ${blueprint.periodCount} period(s) to ${periodCount} period(s) because no longer block was free.`,
+              );
+            }
+            break;
+          }
+
+          if (matchedBlock) {
+            break;
+          }
+        }
+
+        if (matchedBlock) {
+          break;
+        }
+      }
+
+      if (matchedBlock) {
+        break;
+      }
+    }
+
+    if (!matchedBlock) {
+      throw new AppError(
+        StatusCodes.CONFLICT,
+        `Unable to find a conflict-free slot for ${blueprint.label.toLowerCase()}. Try another instructor, capacity, or period setup.`,
+      );
+    }
+
+    plannedBlocks.push(matchedBlock);
+  }
+
+  const resolvedSchedule = await resolveSchedulePayload(
+    plannedBlocks.map((block) => ({
+      classType: block.classType,
+      day: block.day,
+      room: block.room,
+      startPeriod: block.startPeriod,
+      periodCount: block.periodCount,
+    })),
+    maxCapacity,
+  );
+
+  const roomLabelMap = new Map(
+    plannedBlocks.map((block) => [block.room.toString(), block.roomLabel]),
+  );
+  const suggestedBlocks: TOfferedSubjectSchedulePlanSuggestionBlock[] =
+    sortPlannerBlocks(
+      resolvedSchedule.scheduleBlocks.map((block) => ({
+        ...block,
+        roomLabel:
+          roomLabelMap.get(block.room.toString()) ?? block.room.toString(),
+        instructorId: instructor.toString(),
+      })),
+    ).map((block) => ({
+      classType: block.classType,
+      day: block.day,
+      room: block.room.toString(),
+      startPeriod: block.startPeriod,
+      periodCount: block.periodCount,
+      periodNumbers: block.periodNumbers,
+      startTimeSnapshot: block.startTimeSnapshot,
+      endTimeSnapshot: block.endTimeSnapshot,
+      roomLabel: block.roomLabel,
+    }));
+
+  const theoryCount = suggestedBlocks.filter(
+    (block) => block.classType === 'theory',
+  ).length;
+  const practicalCount = suggestedBlocks.filter(
+    (block) => block.classType === 'practical',
+  ).length;
+  const tutorialCount = suggestedBlocks.filter(
+    (block) => block.classType === 'tutorial',
+  ).length;
+
+  return {
+    summary: `${selectedSubject.title} was planned into ${suggestedBlocks.length} weekly block(s): ${theoryCount} theory, ${practicalCount} practical, ${tutorialCount} tutorial.`,
+    reasoning,
+    warnings,
+    suggestedBlocks,
+    planningMeta: {
+      subjectTitle: selectedSubject.title,
+      subjectCode: selectedSubject.code,
+      credits: selectedSubject.credits,
+      subjectType: selectedSubject.subjectType,
+      preferredWorkingDays: [...PLANNER_WORKING_DAYS],
+      totalExistingOfferedSubjects: existingSubjects.length,
+    },
+  };
+};
+
 const updateOfferedSubjectIntoDB = async (
   id: string,
-  payload: Pick<TOfferedSubject, 'instructor' | 'maxCapacity' | 'scheduleBlocks'>,
+  payload: Pick<
+    TOfferedSubject,
+    'instructor' | 'maxCapacity' | 'scheduleBlocks'
+  >,
 ) => {
   const { instructor, maxCapacity, scheduleBlocks } = payload;
 
@@ -711,12 +1264,16 @@ const updateOfferedSubjectIntoDB = async (
     existingSubjects,
     {
       instructorId: instructor.toString(),
-      academicDepartmentId: isOfferedSubjectExists.academicDepartment.toString(),
+      academicDepartmentId:
+        isOfferedSubjectExists.academicDepartment.toString(),
     },
   );
 
   if (conflicts.length) {
-    throw new AppError(StatusCodes.CONFLICT, pickFirstConflictMessage(conflicts));
+    throw new AppError(
+      StatusCodes.CONFLICT,
+      pickFirstConflictMessage(conflicts),
+    );
   }
 
   const result = await OfferedSubject.findByIdAndUpdate(
@@ -841,12 +1398,270 @@ const deleteOfferedSubjectFromDB = async (id: string) => {
   return result;
 };
 
+const planBulkOfferedSubjectScheduleIntoDB = async (
+  payload: TBulkOfferedSubjectSchedulePlanInput,
+): Promise<TBulkOfferedSubjectSchedulePlan> => {
+  const { semesterRegistration, academicDepartment, entries } = payload;
+
+  if (!entries.length) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'At least one subject entry is required for bulk planning.',
+    );
+  }
+
+  const registration =
+    await SemesterRegistration.findById(semesterRegistration);
+  if (!registration) {
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Semester registration not found !',
+    );
+  }
+
+  if (registration.status === 'ENDED') {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Schedule planning is only available for active or upcoming registrations.',
+    );
+  }
+
+  const activePeriodConfig =
+    await PeriodConfigServices.getActivePeriodConfigFromDB();
+  const schedulablePeriods = [...(activePeriodConfig.periods ?? [])]
+    .filter((period) => period.isActive !== false && period.isBreak !== true)
+    .sort((left, right) => left.periodNo - right.periodNo)
+    .map((period) => ({
+      periodNo: period.periodNo,
+      startTime: period.startTime,
+      endTime: period.endTime,
+    }));
+
+  if (!schedulablePeriods.length) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'No schedulable periods found.',
+    );
+  }
+
+  const existingSubjects = await fetchComparableOfferedSubjects(
+    semesterRegistration.toString(),
+  );
+  const batchPlannedBlocks: TPlannerCandidateBlock[] = [];
+  const plans: (TOfferedSubjectSchedulePlan & { subjectId: string })[] = [];
+
+  for (const entry of entries) {
+    const selectedSubject = await Subject.findById(entry.subject).select(
+      'title code credits subjectType markingScheme',
+    );
+    if (!selectedSubject) continue;
+
+    const candidateRooms = (await Room.find({
+      isActive: true,
+      capacity: { $gte: entry.maxCapacity },
+    }).select(
+      '_id roomName roomNumber buildingNumber capacity roomType',
+    )) as (TPlannerRoom & { roomType: string })[];
+
+    if (!candidateRooms.length) continue;
+
+    const { blocks: blueprintBlocks, reasoning } = buildSubjectMeetingBlueprint(
+      {
+        credits: selectedSubject.credits,
+        subjectType: selectedSubject.subjectType,
+        markingScheme: selectedSubject.markingScheme,
+      },
+    );
+
+    const currentSubjectPlannedBlocks: TPlannerCandidateBlock[] = [];
+    const warnings: string[] = [];
+
+    for (const blueprint of blueprintBlocks) {
+      // Filter and Sort rooms based on classType and roomType
+      const isTheoryClass = blueprint.classType === 'theory';
+      const isPracticalClass = blueprint.classType === 'practical';
+
+      const eligibleRooms = candidateRooms.filter((room) => {
+        if (isPracticalClass) {
+          // Practical classes MUST be in practical or both type rooms
+          return room.roomType === 'practical' || room.roomType === 'both';
+        }
+        // Theory classes can use any room (fallback to practical if theory/both full)
+        return true;
+      });
+
+      const sortedRooms = [...eligibleRooms].sort((a, b) => {
+        if (isTheoryClass) {
+          // Priority for theory: theory > both > practical
+          const score = (r: TPlannerRoom) => {
+            if (r.roomType === 'theory') return 0;
+            if (r.roomType === 'both') return 1;
+            return 2;
+          };
+          return score(a) - score(b) || a.capacity - b.capacity;
+        } else if (isPracticalClass) {
+          // Priority for practical: practical > both
+          const score = (r: TPlannerRoom) => {
+            if (r.roomType === 'practical') return 0;
+            if (r.roomType === 'both') return 1;
+            return 2;
+          };
+          return score(a) - score(b) || a.capacity - b.capacity;
+        }
+
+        // Fallback: sort by capacity
+        return a.capacity - b.capacity;
+      });
+
+      const dayOrder = [...PLANNER_WORKING_DAYS].sort((left, right) => {
+        const leftCount =
+          batchPlannedBlocks.filter((b) => b.day === left).length +
+          currentSubjectPlannedBlocks.filter((b) => b.day === left).length;
+        const rightCount =
+          batchPlannedBlocks.filter((b) => b.day === right).length +
+          currentSubjectPlannedBlocks.filter((b) => b.day === right).length;
+        return (
+          leftCount - rightCount ||
+          PLANNER_WORKING_DAYS.indexOf(left) -
+            PLANNER_WORKING_DAYS.indexOf(right)
+        );
+      });
+
+      let matchedBlock: TPlannerCandidateBlock | null = null;
+      const periodCountOptions = Array.from(
+        {
+          length:
+            blueprint.periodCount -
+            (blueprint.minimumPeriodCount ?? blueprint.periodCount) +
+            1,
+        },
+        (_, i) => blueprint.periodCount - i,
+      );
+
+      for (const day of dayOrder) {
+        for (const periodCount of periodCountOptions) {
+          const periodOptions = buildContiguousPeriodOptions(
+            schedulablePeriods,
+            periodCount,
+          );
+          for (const option of periodOptions) {
+            for (const room of sortedRooms) {
+              const candidate: TPlannerCandidateBlock = {
+                classType: blueprint.classType,
+                day,
+                room: room._id,
+                startPeriod: option.startPeriod,
+                periodCount: option.periodCount,
+                periodNumbers: option.periodNumbers,
+                startTimeSnapshot: option.startTimeSnapshot,
+                endTimeSnapshot: option.endTimeSnapshot,
+                roomLabel: buildRoomLabel(room),
+                instructorId: entry.instructor.toString(),
+              };
+
+              const internalConflict = [
+                ...batchPlannedBlocks,
+                ...currentSubjectPlannedBlocks,
+              ].some((b) => doScheduleBlocksOverlap(b, candidate));
+              if (internalConflict) continue;
+
+              const externalConflicts = collectScheduleConflicts(
+                [candidate],
+                existingSubjects,
+                {
+                  instructorId: entry.instructor.toString(),
+                  academicDepartmentId: academicDepartment.toString(),
+                },
+              );
+              if (externalConflicts.length) continue;
+
+              matchedBlock = candidate;
+              break;
+            }
+            if (matchedBlock) break;
+          }
+          if (matchedBlock) break;
+        }
+        if (matchedBlock) break;
+      }
+
+      if (matchedBlock) {
+        currentSubjectPlannedBlocks.push(matchedBlock);
+      } else {
+        warnings.push(`Could not find a slot for ${blueprint.label}.`);
+      }
+    }
+
+    if (currentSubjectPlannedBlocks.length) {
+      batchPlannedBlocks.push(...currentSubjectPlannedBlocks);
+      const resolved = await resolveSchedulePayload(
+        currentSubjectPlannedBlocks.map((b) => ({
+          classType: b.classType,
+          day: b.day,
+          room: b.room,
+          startPeriod: b.startPeriod,
+          periodCount: b.periodCount,
+        })),
+        entry.maxCapacity,
+      );
+
+      const roomLabelMap = new Map(
+        currentSubjectPlannedBlocks.map((b) => [
+          b.room.toString(),
+          b.roomLabel,
+        ]),
+      );
+      const suggestedBlocks: TOfferedSubjectSchedulePlanSuggestionBlock[] =
+        sortPlannerBlocks(
+          resolved.scheduleBlocks.map((b) => ({
+            ...b,
+            roomLabel: roomLabelMap.get(b.room.toString()) ?? b.room.toString(),
+            instructorId: entry.instructor.toString(),
+          })),
+        ).map((b) => ({
+          classType: b.classType,
+          day: b.day,
+          room: b.room.toString(),
+          startPeriod: b.startPeriod,
+          periodCount: b.periodCount,
+          periodNumbers: b.periodNumbers,
+          startTimeSnapshot: b.startTimeSnapshot,
+          endTimeSnapshot: b.endTimeSnapshot,
+          roomLabel: b.roomLabel,
+        }));
+
+      plans.push({
+        subjectId: entry.subject.toString(),
+        summary: `${selectedSubject.title} planned with ${suggestedBlocks.length} blocks.`,
+        reasoning,
+        warnings,
+        suggestedBlocks,
+        planningMeta: {
+          subjectTitle: selectedSubject.title,
+          subjectCode: selectedSubject.code,
+          credits: selectedSubject.credits,
+          subjectType: selectedSubject.subjectType,
+          preferredWorkingDays: [...PLANNER_WORKING_DAYS],
+          totalExistingOfferedSubjects: existingSubjects.length,
+        },
+      });
+    }
+  }
+
+  return {
+    plans,
+    summary: `Bulk plan generated for ${plans.length} subjects.`,
+  };
+};
+
 export const OfferedSubjectServices = {
   createOfferedSubjectIntoDB,
   getAllOfferedSubjectsFromDB,
   getMyOfferedSubjectFromDB,
   getSingleOfferedSubjectFromDB,
   previewOfferedSubjectConflictsIntoDB,
+  planOfferedSubjectScheduleIntoDB,
+  planBulkOfferedSubjectScheduleIntoDB,
   deleteOfferedSubjectFromDB,
   updateOfferedSubjectIntoDB,
 };
