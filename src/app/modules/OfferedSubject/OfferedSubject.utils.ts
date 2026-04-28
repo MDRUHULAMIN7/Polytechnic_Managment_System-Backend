@@ -2,6 +2,8 @@ import { StatusCodes } from 'http-status-codes';
 import AppError from '../../errors/AppError.js';
 import { PeriodConfigServices } from '../periodConfig/periodConfig.service.js';
 import { Room } from '../room/room.model.js';
+import { OfferedSubject } from './OfferedSubject.model.js';
+import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import { DaySortOrder, timeToMinutes } from './OfferedSubject.constant.js';
 import type {
   TDays,
@@ -37,13 +39,15 @@ export type TScheduleConflict = {
 };
 
 const compareBlocks = (left: TScheduleLikeBlock, right: TScheduleLikeBlock) => {
-  const dayDelta = (DaySortOrder[left.day] ?? 0) - (DaySortOrder[right.day] ?? 0);
+  const dayDelta =
+    (DaySortOrder[left.day] ?? 0) - (DaySortOrder[right.day] ?? 0);
   if (dayDelta !== 0) {
     return dayDelta;
   }
 
   return (
-    timeToMinutes(left.startTimeSnapshot) - timeToMinutes(right.startTimeSnapshot)
+    timeToMinutes(left.startTimeSnapshot) -
+    timeToMinutes(right.startTimeSnapshot)
   );
 };
 
@@ -70,7 +74,10 @@ export const doScheduleBlocksOverlap = (
 
 const buildScheduleSummary = (scheduleBlocks: TScheduleBlock[]) => {
   if (!scheduleBlocks.length) {
-    throw new AppError(StatusCodes.BAD_REQUEST, 'At least one schedule block is required.');
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'At least one schedule block is required.',
+    );
   }
 
   const sorted = [...scheduleBlocks].sort(compareBlocks);
@@ -107,7 +114,9 @@ const resolveBlocksAgainstActiveConfig = async (
     .filter((period) => period.isActive !== false && period.isBreak !== true)
     .sort((left, right) => left.periodNo - right.periodNo);
 
-  const uniqueRoomIds = Array.from(new Set(blocks.map((block) => block.room.toString())));
+  const uniqueRoomIds = Array.from(
+    new Set(blocks.map((block) => block.room.toString())),
+  );
   const rooms = await Room.find({
     _id: { $in: uniqueRoomIds },
   }).select('_id capacity isActive roomName roomNumber buildingNumber');
@@ -165,7 +174,11 @@ const ensureNoInternalScheduleOverlap = (scheduleBlocks: TScheduleBlock[]) => {
   for (let index = 0; index < scheduleBlocks.length; index += 1) {
     const current = scheduleBlocks[index];
 
-    for (let otherIndex = index + 1; otherIndex < scheduleBlocks.length; otherIndex += 1) {
+    for (
+      let otherIndex = index + 1;
+      otherIndex < scheduleBlocks.length;
+      otherIndex += 1
+    ) {
       const other = scheduleBlocks[otherIndex];
       if (!doScheduleBlocksOverlap(current, other)) {
         continue;
@@ -186,7 +199,9 @@ export const resolveSchedulePayload = async (
   const resolvedBlocks = await resolveBlocksAgainstActiveConfig(scheduleBlocks);
   ensureNoInternalScheduleOverlap(resolvedBlocks);
 
-  const uniqueRoomIds = Array.from(new Set(resolvedBlocks.map((block) => block.room.toString())));
+  const uniqueRoomIds = Array.from(
+    new Set(resolvedBlocks.map((block) => block.room.toString())),
+  );
   const rooms = await Room.find({
     _id: { $in: uniqueRoomIds },
   }).select('_id capacity roomName roomNumber buildingNumber');
@@ -223,13 +238,17 @@ export const extractComparableScheduleBlocks = (
       room:
         typeof block.room === 'string'
           ? block.room
-          : block.room?.toString?.() ?? null,
+          : (block.room?.toString?.() ?? null),
       startTimeSnapshot: block.startTimeSnapshot,
       endTimeSnapshot: block.endTimeSnapshot,
     }));
   }
 
-  if (offeredSubject.days?.length && offeredSubject.startTime && offeredSubject.endTime) {
+  if (
+    offeredSubject.days?.length &&
+    offeredSubject.startTime &&
+    offeredSubject.endTime
+  ) {
     return offeredSubject.days.map((day) => ({
       day,
       room: null,
@@ -285,7 +304,10 @@ export const collectScheduleConflicts = (
           ? existingSubject.academicDepartment
           : existingSubject.academicDepartment?.toString?.();
 
-      if (existingInstructorId && existingInstructorId === context.instructorId) {
+      if (
+        existingInstructorId &&
+        existingInstructorId === context.instructorId
+      ) {
         conflicts.push({
           type: 'INSTRUCTOR_CONFLICT',
           message: `Instructor already has another class on ${scheduleBlock.day} during ${scheduleBlock.startTimeSnapshot}-${scheduleBlock.endTimeSnapshot}.`,
@@ -310,7 +332,10 @@ export const collectScheduleConflicts = (
         });
       }
 
-      if (existingDepartmentId && existingDepartmentId === context.academicDepartmentId) {
+      if (
+        existingDepartmentId &&
+        existingDepartmentId === context.academicDepartmentId
+      ) {
         conflicts.push({
           type: 'DEPARTMENT_CONFLICT',
           message: `This department already has another class on ${scheduleBlock.day} during ${scheduleBlock.startTimeSnapshot}-${scheduleBlock.endTimeSnapshot}.`,
@@ -336,4 +361,33 @@ export const collectScheduleConflicts = (
   });
 
   return Array.from(deduped.values());
+};
+
+export const fetchComparableOfferedSubjects = async (
+  semesterRegistrationId: string,
+  excludeOfferedSubjectId?: string,
+) => {
+  const activeRegistrations = await SemesterRegistration.find({
+    status: { $in: ['UPCOMING', 'ONGOING'] },
+  }).select('_id');
+
+  const registrationIds = activeRegistrations.map((reg) => reg._id);
+
+  // Ensure the current registration ID is included even if its status is not UPCOMING/ONGOING
+  // (though it usually should be)
+  const uniqueIds = Array.from(
+    new Set([
+      ...registrationIds.map((id) => id.toString()),
+      semesterRegistrationId,
+    ]),
+  );
+
+  return OfferedSubject.find({
+    semesterRegistration: { $in: uniqueIds },
+    ...(excludeOfferedSubjectId
+      ? { _id: { $ne: excludeOfferedSubjectId } }
+      : {}),
+  }).select(
+    'instructor academicDepartment scheduleBlocks days startTime endTime',
+  );
 };

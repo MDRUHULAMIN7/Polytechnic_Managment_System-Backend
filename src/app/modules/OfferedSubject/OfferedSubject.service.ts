@@ -31,6 +31,7 @@ import { Room } from '../room/room.model.js';
 import {
   collectScheduleConflicts,
   doScheduleBlocksOverlap,
+  fetchComparableOfferedSubjects,
   resolveSchedulePayload,
 } from './OfferedSubject.utils.js';
 import { DaySortOrder, timeToMinutes } from './OfferedSubject.constant.js';
@@ -109,7 +110,6 @@ const buildSubjectMeetingBlueprint = (subject: {
         {
           classType: 'practical' as const,
           periodCount: 3,
-          minimumPeriodCount: 2,
           label: 'Practical class',
         },
         ...Array.from(
@@ -122,53 +122,49 @@ const buildSubjectMeetingBlueprint = (subject: {
         ),
       ];
       reasoning.push(
-        'Theory-practical subjects were planned as one lab block plus the remaining theory meetings.',
+        'Theory-practical subjects were planned as one 3-period lab block plus the remaining 1-period theory meetings.',
       );
       break;
     case 'PRACTICAL_ONLY':
       blocks = Array.from({ length: roundedCredits }, (_, index) => ({
         classType: 'practical' as const,
-        periodCount: 2,
-        minimumPeriodCount: 1,
+        periodCount: 3,
         label: `Practical block ${index + 1}`,
       }));
       reasoning.push(
-        'Practical-only subjects were spread across days as lab blocks.',
+        'Practical-only subjects were spread across days as 3-period lab blocks.',
       );
       break;
     case 'PROJECT':
       blocks = [
         {
           classType: 'tutorial' as const,
-          periodCount: 2,
-          minimumPeriodCount: 1,
+          periodCount: 1,
           label: 'Project supervision',
         },
         ...Array.from(
           { length: Math.max(0, roundedCredits - 1) },
           (_, index) => ({
             classType: 'practical' as const,
-            periodCount: 2,
-            minimumPeriodCount: 1,
+            periodCount: 3,
             label: `Project work block ${index + 1}`,
           }),
         ),
       ];
       reasoning.push(
-        'Project subjects were balanced between supervision time and work blocks across days.',
+        'Project subjects were balanced between 1-period supervision and 3-period work blocks.',
       );
       break;
     case 'INDUSTRIAL_ATTACHMENT':
       blocks = [
         {
           classType: 'tutorial' as const,
-          periodCount: 2,
-          minimumPeriodCount: 1,
+          periodCount: 1,
           label: 'Attachment briefing',
         },
       ];
       reasoning.push(
-        'Industrial attachment was treated as a briefing-style weekly block.',
+        'Industrial attachment was treated as a 1-period briefing block.',
       );
       break;
     default:
@@ -179,12 +175,11 @@ const buildSubjectMeetingBlueprint = (subject: {
             | 'practical'
             | 'theory',
           periodCount: includesPractical ? 3 : 1,
-          minimumPeriodCount: includesPractical ? 2 : 1,
           label: `Session ${index + 1}`,
         }),
       );
       reasoning.push(
-        'Fallback planner rules were used because the subject type was not explicitly handled.',
+        'Fallback planner rules: Theory classes use 1 period, Practical classes use 3 periods.',
       );
       break;
   }
@@ -196,11 +191,10 @@ const buildSubjectMeetingBlueprint = (subject: {
     blocks.push({
       classType: 'practical',
       periodCount: 3,
-      minimumPeriodCount: 2,
       label: 'Practical class',
     });
     reasoning.push(
-      'Added one practical block because the marking scheme contains practical marks.',
+      'Added one 3-period practical block because the marking scheme contains practical marks.',
     );
   }
 
@@ -364,20 +358,6 @@ const ensureCommonReferencesExist = async (payload: {
     semesterRegistration: isSemesterRegistrationExits,
     academicDepartment: isAcademicDepartmentExits,
   };
-};
-
-const fetchComparableOfferedSubjects = async (
-  semesterRegistrationId: string,
-  excludeOfferedSubjectId?: string,
-) => {
-  return OfferedSubject.find({
-    semesterRegistration: semesterRegistrationId,
-    ...(excludeOfferedSubjectId
-      ? { _id: { $ne: excludeOfferedSubjectId } }
-      : {}),
-  }).select(
-    'instructor academicDepartment scheduleBlocks days startTime endTime',
-  );
 };
 
 const getRequestedFields = (queryObj: Record<string, unknown>) => {
