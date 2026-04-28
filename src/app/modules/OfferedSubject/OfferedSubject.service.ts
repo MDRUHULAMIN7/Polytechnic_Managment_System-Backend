@@ -941,8 +941,17 @@ const planOfferedSubjectScheduleIntoDB = async (
     throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found !');
   }
 
-  const activePeriodConfig =
-    await PeriodConfigServices.getActivePeriodConfigFromDB();
+  let activePeriodConfig;
+  try {
+    activePeriodConfig =
+      await PeriodConfigServices.getActivePeriodConfigFromDB();
+  } catch (error: any) {
+    throw new AppError(
+      error.statusCode || StatusCodes.INTERNAL_SERVER_ERROR,
+      error.message || 'Failed to retrieve active period configuration.',
+    );
+  }
+
   const schedulablePeriods = [...(activePeriodConfig.periods ?? [])]
     .filter((period) => period.isActive !== false && period.isBreak !== true)
     .sort((left, right) => left.periodNo - right.periodNo)
@@ -1406,8 +1415,17 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
     );
   }
 
-  const activePeriodConfig =
-    await PeriodConfigServices.getActivePeriodConfigFromDB();
+  let activePeriodConfig;
+  try {
+    activePeriodConfig =
+      await PeriodConfigServices.getActivePeriodConfigFromDB();
+  } catch (error: any) {
+    throw new AppError(
+      error.statusCode || StatusCodes.INTERNAL_SERVER_ERROR,
+      error.message || 'Failed to retrieve active period configuration.',
+    );
+  }
+
   const schedulablePeriods = [...(activePeriodConfig.periods ?? [])]
     .filter((period) => period.isActive !== false && period.isBreak !== true)
     .sort((left, right) => left.periodNo - right.periodNo)
@@ -1431,19 +1449,55 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
   const plans: (TOfferedSubjectSchedulePlan & { subjectId: string })[] = [];
 
   for (const entry of entries) {
+    if (!entry.subject || !entry.instructor) {
+      continue;
+    }
+
     const selectedSubject = await Subject.findById(entry.subject).select(
       'title code credits subjectType markingScheme',
     );
-    if (!selectedSubject) continue;
+    if (!selectedSubject) {
+      continue;
+    }
+
+    const instructorExists = await Instructor.findById(entry.instructor).select(
+      '_id',
+    );
+    if (!instructorExists) {
+      continue;
+    }
 
     const candidateRooms = (await Room.find({
       isActive: true,
       capacity: { $gte: entry.maxCapacity },
-    }).select(
-      '_id roomName roomNumber buildingNumber capacity roomType',
-    )) as (TPlannerRoom & { roomType: string })[];
+    })
+      .select('_id roomName roomNumber buildingNumber capacity roomType')
+      .sort({
+        capacity: 1,
+        buildingNumber: 1,
+        roomNumber: 1,
+      })) as TPlannerRoom[];
 
-    if (!candidateRooms.length) continue;
+    if (!candidateRooms.length) {
+      plans.push({
+        subjectId: entry.subject.toString(),
+        summary: `Could not plan ${selectedSubject.title} because no rooms with capacity >= ${entry.maxCapacity} were found.`,
+        reasoning: [],
+        warnings: [
+          `No suitable rooms found for capacity ${entry.maxCapacity}.`,
+        ],
+        suggestedBlocks: [],
+        planningMeta: {
+          subjectTitle: selectedSubject.title,
+          subjectCode: selectedSubject.code,
+          credits: selectedSubject.credits,
+          subjectType: selectedSubject.subjectType,
+          preferredWorkingDays: [...PLANNER_WORKING_DAYS],
+          totalExistingOfferedSubjects: existingSubjects.length,
+        },
+      });
+      continue;
+    }
 
     const { blocks: blueprintBlocks, reasoning } = buildSubjectMeetingBlueprint(
       {
@@ -1508,15 +1562,15 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
       });
 
       let matchedBlock: TPlannerCandidateBlock | null = null;
-      const periodCountOptions = Array.from(
-        {
-          length:
-            blueprint.periodCount -
-            (blueprint.minimumPeriodCount ?? blueprint.periodCount) +
-            1,
-        },
-        (_, i) => blueprint.periodCount - i,
-      );
+      const periodCountOptions: number[] = [];
+      for (
+        let currentPeriodCount = blueprint.periodCount;
+        currentPeriodCount >=
+        (blueprint.minimumPeriodCount ?? blueprint.periodCount);
+        currentPeriodCount -= 1
+      ) {
+        periodCountOptions.push(currentPeriodCount);
+      }
 
       for (const day of dayOrder) {
         for (const periodCount of periodCountOptions) {
@@ -1556,6 +1610,11 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
               if (externalConflicts.length) continue;
 
               matchedBlock = candidate;
+              if (periodCount < blueprint.periodCount) {
+                warnings.push(
+                  `${blueprint.label} was reduced from ${blueprint.periodCount} period(s) to ${periodCount} period(s) because no longer block was free.`,
+                );
+              }
               break;
             }
             if (matchedBlock) break;
