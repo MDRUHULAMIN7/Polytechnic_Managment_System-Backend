@@ -13,6 +13,43 @@ const INVALID_CREDENTIALS_MESSAGE = 'Invalid credentials.';
 const INVALID_SESSION_MESSAGE = 'Invalid session. Please log in again.';
 const INVALID_PASSWORD_RESET_MESSAGE = 'Invalid or expired password reset request.';
 
+function buildPasswordResetEmail(resetLink: string) {
+  return {
+    subject: 'Reset your password within ten minutes',
+    text: [
+      'We received a request to reset your password.',
+      `Use this link within ten minutes: ${resetLink}`,
+      'If you did not request this, you can safely ignore this message.',
+    ].join('\n'),
+    html: `
+      <div style="font-family: Arial, Helvetica, sans-serif; background: #f5f7fb; padding: 32px; color: #1f2937;">
+        <div style="max-width: 640px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;">
+          <div style="background: #1d4ed8; color: #ffffff; padding: 24px 28px;">
+            <h1 style="margin: 0; font-size: 24px;">Password Reset Request</h1>
+            <p style="margin: 10px 0 0; font-size: 14px; opacity: 0.92;">This link will expire in ten minutes.</p>
+          </div>
+          <div style="padding: 28px;">
+            <p style="margin: 0 0 18px; font-size: 15px; line-height: 1.7;">
+              We received a request to reset your password. Click the button below to continue.
+            </p>
+            <p style="margin: 0 0 22px;">
+              <a
+                href="${resetLink}"
+                style="display: inline-block; background: #1d4ed8; color: #ffffff; text-decoration: none; padding: 12px 20px; border-radius: 10px; font-weight: 700;"
+              >
+                Reset Password
+              </a>
+            </p>
+            <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #4b5563;">
+              If you did not request this, you can safely ignore this email.
+            </p>
+          </div>
+        </div>
+      </div>
+    `,
+  };
+}
+
 const loginUser = async (payload: TLoginUser) => {
   // checking if the user is exist
   const user = await User.isUserExistsByCustomId(payload.id);
@@ -162,10 +199,16 @@ const forgetPassword = async (userId: string) => {
   );
 
   const resetUILink = `${config.reset_pass_ui_link}?id=${user.id}&token=${resetToken}`;
-  const deliveryEmail = config.password_reset_email_override?.trim() || user.email;
+  const deliveryEmail = user.email;
+  const message = buildPasswordResetEmail(resetUILink);
 
   try {
-    await sendEmail(deliveryEmail, resetUILink);
+    await sendEmail({
+      to: deliveryEmail,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+    });
     return null;
   } catch (error) {
     logger.error('Password reset email delivery failed.', {

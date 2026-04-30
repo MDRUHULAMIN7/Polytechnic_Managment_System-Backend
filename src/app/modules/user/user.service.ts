@@ -13,6 +13,8 @@ import type { TInstructor } from "../Instructor/Instructor.interface.js";
 import { AcademicDepartment } from "../academicDepartment/academicDepartment.model.js";
 import { Admin } from "../admin/admin.model.js";
 import type { TAdmin } from "../admin/admin.interface.js";
+import { logger } from "../../utils/logger.js";
+import { sendAccountOnboardingEmail } from "../../utils/accountOnboardingEmail.js";
 import { sendImageToCloudinary } from "../../utils/sendImageToCloudinary.js";
 
 type TEditableProfilePayload = {
@@ -65,6 +67,37 @@ function assignNestedFields(
 
 function hasEditableValues(value: Record<string, unknown>) {
   return Object.keys(value).length > 0;
+}
+
+async function sendOnboardingEmailSafely(args: {
+  email: string;
+  userId: string;
+  temporaryPassword: string;
+  roleLabel: string;
+  departmentName?: string;
+  name?: {
+    firstName: string;
+    middleName?: string;
+    lastName: string;
+  };
+}) {
+  try {
+    await sendAccountOnboardingEmail({
+      to: args.email,
+      userId: args.userId,
+      temporaryPassword: args.temporaryPassword,
+      roleLabel: args.roleLabel,
+      departmentName: args.departmentName,
+      name: args.name,
+    });
+  } catch (error) {
+    logger.error('Account onboarding email delivery failed.', {
+      deliveryEmail: args.email,
+      userId: args.userId,
+      roleLabel: args.roleLabel,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function buildStudentUpdatePayload(payload: TEditableProfilePayload) {
@@ -170,10 +203,11 @@ const createStudentIntoDB = async (
   //create a user object
 
   const user:Partial<TUser> = {};
+  const temporaryPassword = passsword || config.default_password as string;
 
 
   //if password is not given , use default password
-  user.password = passsword || config.default_password as string;
+  user.password = temporaryPassword;
 
     // set student role 
   user.role = "student"
@@ -232,9 +266,17 @@ const createStudentIntoDB = async (
     );
    }
 
-   await session.commitTransaction();
-   await session.endSession();
-    return newStudent  ;
+	   await session.commitTransaction();
+	   await session.endSession();
+      await sendOnboardingEmailSafely({
+        email: payload.email,
+        userId: newUser[0].id,
+        temporaryPassword,
+        roleLabel: 'student',
+        departmentName: academicDepartment.name,
+        name: payload.name,
+      });
+	    return newStudent  ;
 
   }catch(error:any){
    await session.abortTransaction();
@@ -250,9 +292,10 @@ const createInstructorIntoDB = async (password: string, payload: TInstructor,
   file?: { path: string },) => {
   // create a user object
   const userData: Partial<TUser> = {};
+  const temporaryPassword = password || (config.default_password as string);
 
   //if password is not given , use deafult password
-  userData.password = password || (config.default_password as string);
+  userData.password = temporaryPassword;
 
   //set instructor role
   userData.role = 'instructor';
@@ -308,6 +351,14 @@ const createInstructorIntoDB = async (password: string, payload: TInstructor,
 
     await session.commitTransaction();
     await session.endSession();
+    await sendOnboardingEmailSafely({
+      email: payload.email,
+      userId: newUser[0].id,
+      temporaryPassword,
+      roleLabel: 'instructor',
+      departmentName: academicDepartment.name,
+      name: payload.name,
+    });
 
     return newInstructor;
   } catch (err: any) {
@@ -320,9 +371,10 @@ const createInstructorIntoDB = async (password: string, payload: TInstructor,
 const createAdminIntoDB = async (password: string, payload: TAdmin,file?: { path: string },) => {
   // create a user object
   const userData: Partial<TUser> = {};
+  const temporaryPassword = password || (config.default_password as string);
 
   //if password is not given , use deafult password
-  userData.password = password || (config.default_password as string);
+  userData.password = temporaryPassword;
 
   //set admin role
   userData.role = 'admin';
@@ -368,6 +420,13 @@ const createAdminIntoDB = async (password: string, payload: TAdmin,file?: { path
 
     await session.commitTransaction();
     await session.endSession();
+    await sendOnboardingEmailSafely({
+      email: payload.email,
+      userId: newUser[0].id,
+      temporaryPassword,
+      roleLabel: 'admin',
+      name: payload.name,
+    });
 
     return newAdmin;
   } catch (err: any) {

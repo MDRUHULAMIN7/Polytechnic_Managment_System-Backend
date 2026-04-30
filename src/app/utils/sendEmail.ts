@@ -3,9 +3,6 @@ import config from '../config/index.js';
 
 const DEFAULT_SMTP_HOST = 'smtp.gmail.com';
 const DEFAULT_SMTP_PORT = 587;
-
-
-
 function resolveSmtpPort() {
   const value = Number(config.smtp_port ?? DEFAULT_SMTP_PORT);
 
@@ -28,7 +25,19 @@ function resolveSmtpSecure(port: number) {
   return port === 465;
 }
 
-export const sendEmail = async (to: string, html: string) => {
+type SendEmailOptions = {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+};
+
+export const sendEmail = async ({
+  to,
+  subject,
+  html,
+  text = '',
+}: SendEmailOptions) => {
   if (!config.smtp_user || !config.smtp_pass) {
     throw new Error(
       'Email service is not configured. Set SMTP_USER and SMTP_PASS in environment variables.',
@@ -50,10 +59,10 @@ export const sendEmail = async (to: string, html: string) => {
 
   const info = await transporter.sendMail({
     from,
-    to, // list of receivers
-    subject: 'Reset your password within ten mins!', // Subject line
-    text: '', // plain text body
-    html, // html body
+    to,
+    subject,
+    text,
+    html,
   });
 
   return {
