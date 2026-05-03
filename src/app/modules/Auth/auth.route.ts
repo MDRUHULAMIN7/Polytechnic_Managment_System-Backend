@@ -39,6 +39,12 @@ router.post(
   AuthControllers.refreshToken,
 );
 
+router.get(
+  '/socket-token',
+  authRateLimit,
+  AuthControllers.issueSocketToken,
+);
+
 router.post('/logout', AuthControllers.logout);
 router.post(
   '/forget-password',

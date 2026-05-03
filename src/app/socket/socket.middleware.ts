@@ -1,6 +1,10 @@
 import type { Socket } from 'socket.io';
 import { parse as parseCookie } from 'cookie';
-import { readBearerToken, resolveSessionUser } from '../utils/session-auth.js';
+import {
+  readBearerToken,
+  resolveSessionUser,
+  resolveSocketSessionUser,
+} from '../utils/session-auth.js';
 import type { TSocketWithUser } from './socket.types.js';
 
 export async function socketAuthMiddleware(
@@ -24,8 +28,27 @@ export async function socketAuthMiddleware(
         : authPayload && typeof authPayload.token === 'string'
           ? authPayload.token
           : null;
+    const scopedSocketToken = readBearerToken(handshakeToken ?? undefined);
+
+    if (scopedSocketToken) {
+      try {
+        const { user } = await resolveSocketSessionUser(scopedSocketToken);
+
+        (socket as TSocketWithUser).data.user = {
+          userId: user.id,
+          role: user.role,
+          email: user.email,
+        };
+
+        next();
+        return;
+      } catch {
+        // Fall back to legacy access-token authentication when needed.
+      }
+    }
+
     const accessToken =
-      authHeader || readBearerToken(handshakeToken ?? undefined) || cookies.pms_access_token || null;
+      authHeader || scopedSocketToken || cookies.pms_access_token || null;
     const refreshToken = cookies.refreshToken || null;
     const { user } = await resolveSessionUser({
       accessToken,

@@ -4,6 +4,7 @@ import config from '../config/index.js';
 import catchAsync from '../utils/CatchAsync.js';
 import { User } from '../modules/user/user.model.js';
 import { createToken } from '../modules/Auth/auth.utils.js';
+import type { TAuthenticatedRequestUser } from '../types/request-auth.js';
 
 const isProduction = config.NODE_ENV === 'production';
 const sameSiteMode: 'none' | 'lax' = isProduction ? 'none' : 'lax';
@@ -114,7 +115,13 @@ const optionalAuth = () => {
       return;
     }
 
-    req.user = decoded;
+    req.user = {
+      ...decoded,
+      id: user.id,
+      userId: user.id,
+      role: user.role,
+      email: user.email,
+    } satisfies TAuthenticatedRequestUser;
     next();
   });
 };

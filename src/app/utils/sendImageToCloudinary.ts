@@ -5,6 +5,7 @@ import path from 'path';
 import os from 'os';
 import config from '../config/index.js';
 import { logger } from './logger.js';
+import { generateSecureFileSuffix } from './generateSecureId.js';
 
 cloudinary.config({
   cloud_name: config.cloudinary_cloud_name,
@@ -59,7 +60,7 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const uniqueSuffix = Date.now() + '-' + generateSecureFileSuffix();
     cb(null, file.fieldname + '-' + uniqueSuffix);
   },
 });

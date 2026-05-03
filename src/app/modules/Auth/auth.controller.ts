@@ -4,6 +4,12 @@ import catchAsync from "../../utils/CatchAsync.js";
 import sendResponse from "../../utils/sendResponse.js";
 import { AuthServices } from "./auth.service.js";
 import AppError from "../../errors/AppError.js";
+import {
+  accessCookieOptions,
+  createSocketSessionToken,
+  readBearerToken,
+  resolveSessionUser,
+} from "../../utils/session-auth.js";
 
 const secureCookie = config.NODE_ENV === "production";
 const sameSiteMode: "none" | "lax" = secureCookie ? "none" : "lax";
@@ -81,6 +87,36 @@ const refreshToken = catchAsync(async (req, res) => {
   });
 });
 
+const issueSocketToken = catchAsync(async (req, res) => {
+  const authHeader = readBearerToken(req.headers.authorization);
+  const accessToken = authHeader || req.cookies?.pms_access_token || null;
+  const refreshToken = req.cookies?.refreshToken || null;
+  const { user, nextAccessToken } = await resolveSessionUser({
+    accessToken,
+    refreshToken,
+  });
+
+  if (nextAccessToken) {
+    res.cookie("pms_access_token", nextAccessToken, accessCookieOptions);
+    res.cookie("pms_role", user.role, {
+      ...accessCookieOptions,
+    });
+  }
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: "Realtime session token issued successfully.",
+    data: {
+      socketToken: createSocketSessionToken({
+        id: user.id,
+        role: user.role,
+        email: user.email,
+      }),
+    },
+  });
+});
+
 const logout = catchAsync(async (_req, res) => {
   clearSessionCookies(res);
 
@@ -126,6 +162,7 @@ export const AuthControllers = {
   loginUser,
   changePassword,
   refreshToken,
+  issueSocketToken,
   logout,
   forgetPassword,
   resetPassword,

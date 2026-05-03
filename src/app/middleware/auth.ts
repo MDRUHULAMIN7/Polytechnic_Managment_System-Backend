@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes";
-import type { JwtPayload } from "jsonwebtoken";
 import AppError from "../errors/AppError.js";
 import type { TUserRole } from "../modules/user/user.interface.js";
+import type { TAuthenticatedRequestUser } from "../types/request-auth.js";
 import catchAsync from "../utils/CatchAsync.js";
 import {
   accessCookieOptions,
@@ -37,9 +37,11 @@ const auth = (...requiredRoles: TUserRole[]) => {
 
     req.user = {
       ...decoded,
+      id: user.id,
       role: user.role,
       userId: user.id,
-    } as JwtPayload;
+      email: user.email,
+    } satisfies TAuthenticatedRequestUser;
     next();
   });
 };

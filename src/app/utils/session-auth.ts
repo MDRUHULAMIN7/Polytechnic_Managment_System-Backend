@@ -4,10 +4,14 @@ import AppError from '../errors/AppError.js';
 import config from '../config/index.js';
 import { User } from '../modules/user/user.model.js';
 import { createToken } from '../modules/Auth/auth.utils.js';
+import type { TUserRole } from '../modules/user/user.interface.js';
+import type { TAuthenticatedRequestUser } from '../types/request-auth.js';
 
 const isProduction = config.NODE_ENV === 'production';
 const sameSiteMode: 'none' | 'lax' = isProduction ? 'none' : 'lax';
 const INVALID_SESSION_MESSAGE = 'Invalid session. Please log in again.';
+const SOCKET_SESSION_TOKEN_PURPOSE = 'socket-session';
+const SOCKET_SESSION_TOKEN_EXPIRES_IN: SignOptions['expiresIn'] = '90s';
 
 export const accessCookieOptions = {
   secure: isProduction,
@@ -43,6 +47,59 @@ export async function validateDecodedUser(decoded: JwtPayload) {
   return user;
 }
 
+function buildAuthenticatedRequestUser(
+  user: {
+    id: string;
+    role: TUserRole;
+    email: string;
+  },
+  decoded: JwtPayload,
+): TAuthenticatedRequestUser {
+  return {
+    ...decoded,
+    id: user.id,
+    role: user.role,
+    userId: user.id,
+    email: user.email,
+  };
+}
+
+export function createSocketSessionToken(user: {
+  id: string;
+  role: TUserRole;
+  email: string;
+}) {
+  return createToken(
+    {
+      userId: user.id,
+      id: user.id,
+      role: user.role,
+      email: user.email,
+      purpose: SOCKET_SESSION_TOKEN_PURPOSE,
+    },
+    config.jwt_access_secret as string,
+    SOCKET_SESSION_TOKEN_EXPIRES_IN,
+  );
+}
+
+export async function resolveSocketSessionUser(socketToken: string) {
+  const decoded = jwt.verify(
+    socketToken,
+    config.jwt_access_secret as string,
+  ) as JwtPayload;
+
+  if (decoded.purpose !== SOCKET_SESSION_TOKEN_PURPOSE) {
+    throw new AppError(StatusCodes.UNAUTHORIZED, INVALID_SESSION_MESSAGE);
+  }
+
+  const user = await validateDecodedUser(decoded);
+
+  return {
+    user,
+    decoded: buildAuthenticatedRequestUser(user, decoded),
+  };
+}
+
 export async function resolveSessionUser({
   accessToken,
   refreshToken,
@@ -69,11 +126,7 @@ export async function resolveSessionUser({
 
     return {
       user,
-      decoded: {
-        ...decoded,
-        role: user.role,
-        userId: user.id,
-      } as JwtPayload,
+      decoded: buildAuthenticatedRequestUser(user, decoded),
       nextAccessToken,
     };
   }
@@ -99,11 +152,7 @@ export async function resolveSessionUser({
 
   return {
     user: refreshedUser,
-    decoded: {
-      ...refreshedDecoded,
-      role: refreshedUser.role,
-      userId: refreshedUser.id,
-    } as JwtPayload,
+    decoded: buildAuthenticatedRequestUser(refreshedUser, refreshedDecoded),
     nextAccessToken,
   };
 }
