@@ -39,6 +39,8 @@ export type TSubject = {
   credits: number;
   regulation: number;
   subjectType: TSubjectType;
+  theoryPeriodsPerWeek?: number;
+  practicalPeriodsPerWeek?: number;
   markingScheme: TSubjectMarkingScheme;
   assessmentComponents: TAssessmentComponent[];
   preRequisiteSubjects: TPreRequisiteSubject[];

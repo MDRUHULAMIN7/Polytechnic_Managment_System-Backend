@@ -61,6 +61,8 @@ const SubjectSchema = new Schema(
     credits: { type: Number, required: true, min: 0 },
     regulation: { type: Number, required: true },
     subjectType: { type: String, enum: SubjectTypes, required: true },
+    theoryPeriodsPerWeek: { type: Number, required: true, min: 0, default: 0 },
+    practicalPeriodsPerWeek: { type: Number, required: true, min: 0, default: 0 },
     markingScheme: {
       type: SubjectMarkingSchemeSchema,
       required: true,

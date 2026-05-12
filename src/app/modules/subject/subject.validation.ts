@@ -67,6 +67,12 @@ const createSubjectValidationSchema = z.object({
     credits: requiredPositiveNumberSchema('Credits'),
     regulation: requiredIntegerNumberSchema('Regulation'),
     subjectType: z.enum(SubjectTypes),
+    theoryPeriodsPerWeek: requiredNumberSchema('Theory periods per week')
+      .min(0, 'Theory periods per week cannot be negative.')
+      .int('Theory periods per week must be a whole number.'),
+    practicalPeriodsPerWeek: requiredNumberSchema('Practical periods per week')
+      .min(0, 'Practical periods per week cannot be negative.')
+      .int('Practical periods per week must be a whole number.'),
     markingScheme: markingSchemeValidationSchema,
     assessmentComponents: z
       .array(assessmentComponentValidationSchema)
@@ -84,6 +90,14 @@ const updateSubjectValidationSchema = z.object({
     credits: requiredPositiveNumberSchema('Credits').optional(),
     regulation: requiredIntegerNumberSchema('Regulation').optional(),
     subjectType: z.enum(SubjectTypes).optional(),
+    theoryPeriodsPerWeek: requiredNumberSchema('Theory periods per week')
+      .min(0, 'Theory periods per week cannot be negative.')
+      .int('Theory periods per week must be a whole number.')
+      .optional(),
+    practicalPeriodsPerWeek: requiredNumberSchema('Practical periods per week')
+      .min(0, 'Practical periods per week cannot be negative.')
+      .int('Practical periods per week must be a whole number.')
+      .optional(),
     markingScheme: markingSchemeValidationSchema.optional(),
     assessmentComponents: z
       .array(assessmentComponentValidationSchema)
