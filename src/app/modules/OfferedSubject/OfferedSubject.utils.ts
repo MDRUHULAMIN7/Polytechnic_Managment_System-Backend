@@ -3,7 +3,6 @@ import AppError from '../../errors/AppError.js';
 import { PeriodConfigServices } from '../periodConfig/periodConfig.service.js';
 import { Room } from '../room/room.model.js';
 import { OfferedSubject } from './OfferedSubject.model.js';
-import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import { DaySortOrder, timeToMinutes } from './OfferedSubject.constant.js';
 import type {
   TDays,
@@ -299,10 +298,6 @@ export const collectScheduleConflicts = (
         typeof existingSubject.instructor === 'string'
           ? existingSubject.instructor
           : existingSubject.instructor?.toString?.();
-      const existingDepartmentId =
-        typeof existingSubject.academicDepartment === 'string'
-          ? existingSubject.academicDepartment
-          : existingSubject.academicDepartment?.toString?.();
 
       if (
         existingInstructorId &&
@@ -332,17 +327,8 @@ export const collectScheduleConflicts = (
         });
       }
 
-      if (
-        existingDepartmentId &&
-        existingDepartmentId === context.academicDepartmentId
-      ) {
-        conflicts.push({
-          type: 'DEPARTMENT_CONFLICT',
-          message: `This department already has another class on ${scheduleBlock.day} during ${scheduleBlock.startTimeSnapshot}-${scheduleBlock.endTimeSnapshot}.`,
-          blockIndex: index,
-          conflictingOfferedSubjectId: existingId,
-        });
-      }
+      // Note: We intentionally do NOT flag DEPARTMENT_CONFLICT for overlapping times in different rooms.
+      // Same department often runs multiple parallel sections; room + instructor checks are sufficient.
     });
   });
 
@@ -367,23 +353,8 @@ export const fetchComparableOfferedSubjects = async (
   semesterRegistrationId: string,
   excludeOfferedSubjectId?: string,
 ) => {
-  const activeRegistrations = await SemesterRegistration.find({
-    status: { $in: ['UPCOMING', 'ONGOING'] },
-  }).select('_id');
-
-  const registrationIds = activeRegistrations.map((reg) => reg._id);
-
-  // Ensure the current registration ID is included even if its status is not UPCOMING/ONGOING
-  // (though it usually should be)
-  const uniqueIds = Array.from(
-    new Set([
-      ...registrationIds.map((id) => id.toString()),
-      semesterRegistrationId,
-    ]),
-  );
-
   return OfferedSubject.find({
-    semesterRegistration: { $in: uniqueIds },
+    semesterRegistration: semesterRegistrationId,
     ...(excludeOfferedSubjectId
       ? { _id: { $ne: excludeOfferedSubjectId } }
       : {}),

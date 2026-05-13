@@ -72,6 +72,10 @@ const SubjectSchema = new Schema(
       default: [],
     },
     preRequisiteSubjects: { type: [PreRequisiteSubjectSchema], default: [] },
+    requiredFacilities: {
+      type: [String],
+      default: [],
+    },
     isDeleted: { type: Boolean, default: false },
   },
   {

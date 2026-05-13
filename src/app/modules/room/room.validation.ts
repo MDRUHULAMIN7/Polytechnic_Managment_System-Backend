@@ -24,6 +24,7 @@ const createRoomValidationSchema = z.object({
       .int('Floor must be a whole number.')
       .min(0, 'Floor can not be negative.')
       .optional(),
+    facilities: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
   }),
 });
@@ -46,6 +47,7 @@ const updateRoomValidationSchema = z.object({
       .int('Floor must be a whole number.')
       .min(0, 'Floor can not be negative.')
       .optional(),
+    facilities: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
   }),
 });

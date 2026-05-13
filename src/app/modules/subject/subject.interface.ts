@@ -44,6 +44,7 @@ export type TSubject = {
   markingScheme: TSubjectMarkingScheme;
   assessmentComponents: TAssessmentComponent[];
   preRequisiteSubjects: TPreRequisiteSubject[];
+  requiredFacilities?: string[];
   isDeleted?: boolean;
 };
 

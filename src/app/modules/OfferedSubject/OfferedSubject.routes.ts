@@ -61,6 +61,15 @@ router.get(
 );
 
 router.post(
+  '/bulk-create',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  validateRequest(
+    OfferedSubjectValidations.bulkCreateOfferedSubjectValidationSchema,
+  ),
+  OfferedSubjectControllers.bulkCreateOfferedSubject,
+);
+
+router.post(
   '/create-offered-Subject',
   auth(USER_ROLE.admin, USER_ROLE.superAdmin),
   validateRequest(OfferedSubjectValidations.createOfferedSubjectValidationSchema),

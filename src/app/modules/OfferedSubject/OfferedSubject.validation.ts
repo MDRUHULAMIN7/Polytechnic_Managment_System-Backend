@@ -80,10 +80,29 @@ const planBulkOfferedSubjectScheduleValidationSchema = z.object({
   }),
 });
 
+const bulkCreateOfferedSubjectValidationSchema = z.object({
+  body: z.object({
+    offeredSubjects: z.array(
+      z.object({
+        semesterRegistration: z.string(),
+        academicInstructor: z.string(),
+        academicDepartment: z.string(),
+        subject: z.string(),
+        instructor: z.string(),
+        maxCapacity: positiveIntegerSchema('Max capacity'),
+        scheduleBlocks: z
+          .array(scheduleBlockSchema)
+          .min(1, 'At least one schedule block is required.'),
+      }),
+    ).min(1, 'At least one offered subject is required for bulk creation.'),
+  }),
+});
+
 export const OfferedSubjectValidations = {
   createOfferedSubjectValidationSchema,
   updateOfferedSubjectValidationSchema,
   previewOfferedSubjectConflictValidationSchema,
   planOfferedSubjectScheduleValidationSchema,
   planBulkOfferedSubjectScheduleValidationSchema,
+  bulkCreateOfferedSubjectValidationSchema,
 };

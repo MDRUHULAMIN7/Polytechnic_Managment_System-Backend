@@ -78,6 +78,7 @@ const createSubjectValidationSchema = z.object({
       .array(assessmentComponentValidationSchema)
       .min(1, 'At least one assessment component is required.'),
     preRequisiteSubjects: z.array(preRequisiteSubjectValidationSchema).optional(),
+    requiredFacilities: z.array(z.string()).optional(),
     isDeleted: z.boolean().optional(),
   }),
 });
@@ -104,6 +105,7 @@ const updateSubjectValidationSchema = z.object({
       .min(1, 'At least one assessment component is required.')
       .optional(),
     preRequisiteSubjects: z.array(preRequisiteSubjectValidationSchema).optional(),
+    requiredFacilities: z.array(z.string()).optional(),
     isDeleted: z.boolean().optional(),
   }),
 });

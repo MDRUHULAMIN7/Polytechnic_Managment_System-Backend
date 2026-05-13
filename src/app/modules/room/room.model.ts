@@ -33,6 +33,10 @@ const roomSchema = new Schema<TRoom>(
       type: Number,
       min: 0,
     },
+    facilities: {
+      type: [String],
+      default: [],
+    },
     isActive: {
       type: Boolean,
       default: true,

@@ -1,5 +1,5 @@
 import { StatusCodes } from 'http-status-codes';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import AppError from '../../errors/AppError.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import type {
@@ -934,7 +934,7 @@ const planOfferedSubjectScheduleIntoDB = async (
   }
 
   const selectedSubject = await Subject.findById(subject).select(
-    'title code credits subjectType markingScheme',
+    'title code credits subjectType markingScheme requiredFacilities',
   );
 
   if (!selectedSubject) {
@@ -971,14 +971,25 @@ const planOfferedSubjectScheduleIntoDB = async (
   const candidateRooms = (await Room.find({
     isActive: true,
     capacity: { $gte: maxCapacity },
+    ...(selectedSubject.requiredFacilities?.length
+      ? { facilities: { $all: selectedSubject.requiredFacilities } }
+      : {}),
   })
-    .select('_id roomName roomNumber buildingNumber capacity roomType')
+    .select(
+      '_id roomName roomNumber buildingNumber capacity roomType facilities',
+    )
     .sort({ capacity: 1, buildingNumber: 1, roomNumber: 1 })) as TPlannerRoom[];
 
   if (!candidateRooms.length) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      'No active room can support the requested maximum capacity.',
+      `No active room can support the requested maximum capacity${
+        selectedSubject.requiredFacilities?.length
+          ? ` and required facilities: ${selectedSubject.requiredFacilities.join(
+              ', ',
+            )}`
+          : ''
+      }.`,
     );
   }
 
@@ -1454,7 +1465,7 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
     }
 
     const selectedSubject = await Subject.findById(entry.subject).select(
-      'title code credits subjectType markingScheme',
+      'title code credits subjectType markingScheme requiredFacilities',
     );
     if (!selectedSubject) {
       continue;
@@ -1470,8 +1481,13 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
     const candidateRooms = (await Room.find({
       isActive: true,
       capacity: { $gte: entry.maxCapacity },
+      ...(selectedSubject.requiredFacilities?.length
+        ? { facilities: { $all: selectedSubject.requiredFacilities } }
+        : {}),
     })
-      .select('_id roomName roomNumber buildingNumber capacity roomType')
+      .select(
+        '_id roomName roomNumber buildingNumber capacity roomType facilities',
+      )
       .sort({
         capacity: 1,
         buildingNumber: 1,
@@ -1481,10 +1497,26 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
     if (!candidateRooms.length) {
       plans.push({
         subjectId: entry.subject.toString(),
-        summary: `Could not plan ${selectedSubject.title} because no rooms with capacity >= ${entry.maxCapacity} were found.`,
+        summary: `Could not plan ${
+          selectedSubject.title
+        } because no suitable rooms with capacity >= ${
+          entry.maxCapacity
+        }${
+          selectedSubject.requiredFacilities?.length
+            ? ` and required facilities: ${selectedSubject.requiredFacilities.join(
+                ', ',
+              )}`
+            : ''
+        } were found.`,
         reasoning: [],
         warnings: [
-          `No suitable rooms found for capacity ${entry.maxCapacity}.`,
+          `No suitable rooms found for capacity ${entry.maxCapacity}${
+            selectedSubject.requiredFacilities?.length
+              ? ` and required facilities: ${selectedSubject.requiredFacilities.join(
+                  ', ',
+                )}`
+              : ''
+          }.`,
         ],
         suggestedBlocks: [],
         planningMeta: {
@@ -1693,6 +1725,109 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
   };
 };
 
+const bulkCreateOfferedSubjectIntoDB = async (payloads: TOfferedSubject[]) => {
+  const session = await mongoose.startSession();
+  const results: any[] = [];
+
+  try {
+    session.startTransaction();
+
+    for (const payload of payloads) {
+      const {
+        semesterRegistration,
+        academicInstructor,
+        academicDepartment,
+        subject,
+        instructor,
+        maxCapacity,
+        scheduleBlocks,
+      } = payload;
+
+      const references = await ensureCommonReferencesExist({
+        semesterRegistration,
+        academicInstructor,
+        academicDepartment,
+        subject,
+        instructor,
+      });
+
+      if (references.semesterRegistration.status === 'ENDED') {
+        throw new AppError(
+          StatusCodes.BAD_REQUEST,
+          'The semester registration was already ended.',
+        );
+      }
+
+      const academicSemester = references.semesterRegistration.academicSemester;
+
+      const isSubjectExits = await Subject.findById(subject).session(session);
+
+      if (!isSubjectExits) {
+        throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found !');
+      }
+
+      const isSubjectAlreadyOfferedInRegistration = await OfferedSubject.findOne({
+        semesterRegistration,
+        subject,
+      }).session(session).select('_id');
+
+      if (isSubjectAlreadyOfferedInRegistration) {
+        throw new AppError(
+          StatusCodes.BAD_REQUEST,
+          'This subject is already offered in this semester registration!',
+        );
+      }
+
+      const resolvedSchedule = await resolveSchedulePayload(
+        scheduleBlocks as unknown as TScheduleBlockInput[],
+        maxCapacity,
+      );
+
+      const existingSubjects = await fetchComparableOfferedSubjects(
+        semesterRegistration.toString(),
+      );
+      const conflicts = collectScheduleConflicts(
+        resolvedSchedule.scheduleBlocks,
+        existingSubjects,
+        {
+          instructorId: instructor.toString(),
+          academicDepartmentId: academicDepartment.toString(),
+        },
+      );
+
+      if (conflicts.length) {
+        throw new AppError(
+          StatusCodes.CONFLICT,
+          pickFirstConflictMessage(conflicts),
+        );
+      }
+
+      const result = await OfferedSubject.create([{
+        ...payload,
+        academicSemester,
+        days: resolvedSchedule.days,
+        startTime: resolvedSchedule.startTime,
+        endTime: resolvedSchedule.endTime,
+        scheduleBlocks: resolvedSchedule.scheduleBlocks,
+        markingSchemeSnapshot: cloneMarkingScheme(isSubjectExits.markingScheme),
+        assessmentComponentsSnapshot: cloneAssessmentComponents(
+          isSubjectExits.assessmentComponents,
+        ),
+      }], { session });
+
+      results.push(result[0]);
+    }
+
+    await session.commitTransaction();
+    return results;
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+};
+
 export const OfferedSubjectServices = {
   createOfferedSubjectIntoDB,
   getAllOfferedSubjectsFromDB,
@@ -1703,4 +1838,5 @@ export const OfferedSubjectServices = {
   planBulkOfferedSubjectScheduleIntoDB,
   deleteOfferedSubjectFromDB,
   updateOfferedSubjectIntoDB,
+  bulkCreateOfferedSubjectIntoDB,
 };

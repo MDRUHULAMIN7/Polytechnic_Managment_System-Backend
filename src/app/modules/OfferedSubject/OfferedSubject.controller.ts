@@ -132,6 +132,19 @@ const deleteOfferedSubjectFromDB = catchAsync(async (req, res) => {
   });
 });
 
+const bulkCreateOfferedSubject = catchAsync(async (req, res) => {
+  const result = await OfferedSubjectServices.bulkCreateOfferedSubjectIntoDB(
+    req.body.offeredSubjects,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Offered Subjects are created successfully !',
+    data: { ids: result.map((item) => item._id) },
+  });
+});
+
 export const OfferedSubjectControllers = {
   createOfferedSubject,
   getAllOfferedSubjects,
@@ -142,4 +155,5 @@ export const OfferedSubjectControllers = {
   planBulkOfferedSubjectSchedule,
   updateOfferedSubject,
   deleteOfferedSubjectFromDB,
+  bulkCreateOfferedSubject,
 };

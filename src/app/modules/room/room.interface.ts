@@ -5,6 +5,7 @@ export type TRoom = {
   capacity: number;
   roomType: 'theory' | 'practical' | 'both';
   floor?: number;
+  facilities?: string[];
   isActive?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
