@@ -1,4 +1,5 @@
 import { StatusCodes } from 'http-status-codes';
+import AppError from '../../errors/AppError.js';
 import catchAsync from '../../utils/CatchAsync.js';
 import sendResponse from '../../utils/sendResponse.js';
 import { OfferedSubjectServices } from './OfferedSubject.service.js';
@@ -30,6 +31,32 @@ const getAllOfferedSubjects = catchAsync(async (req, res) => {
     data: result,
   });
 });
+
+const getSemesterOccupancySnapshot = catchAsync(async (req, res) => {
+  const raw = req.query.semesterRegistration;
+  const semesterRegistration =
+    typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim();
+
+  if (!semesterRegistration) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Query parameter semesterRegistration is required.',
+    );
+  }
+
+  const result =
+    await OfferedSubjectServices.getSemesterOccupancySnapshotFromDB(
+      semesterRegistration,
+    );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Semester occupancy snapshot retrieved successfully !',
+    data: { result },
+  });
+});
+
 const getMyOfferedSubject = catchAsync(async (req, res) => {
   const userId = req.user.userId;
   const result = await OfferedSubjectServices.getMyOfferedSubjectFromDB(
@@ -148,6 +175,7 @@ const bulkCreateOfferedSubject = catchAsync(async (req, res) => {
 export const OfferedSubjectControllers = {
   createOfferedSubject,
   getAllOfferedSubjects,
+  getSemesterOccupancySnapshot,
   getMyOfferedSubject,
   getSingleOfferedSubjects,
   previewOfferedSubjectConflicts,

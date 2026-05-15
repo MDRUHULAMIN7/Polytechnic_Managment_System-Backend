@@ -18,6 +18,12 @@ router.get(
 );
 
 router.get(
+  '/occupancy-snapshot',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  OfferedSubjectControllers.getSemesterOccupancySnapshot,
+);
+
+router.get(
   '/my-offered-subject',
   auth(USER_ROLE.student),
   OfferedSubjectControllers.getMyOfferedSubject,

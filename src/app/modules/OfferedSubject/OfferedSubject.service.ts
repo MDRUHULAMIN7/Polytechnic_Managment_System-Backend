@@ -31,8 +31,10 @@ import { Room } from '../room/room.model.js';
 import {
   collectScheduleConflicts,
   doScheduleBlocksOverlap,
+  doScheduleBlocksOverlapByPeriodOrTime,
   fetchComparableOfferedSubjects,
   resolveSchedulePayload,
+  toComparableObjectIdString,
 } from './OfferedSubject.utils.js';
 import { DaySortOrder, timeToMinutes } from './OfferedSubject.constant.js';
 
@@ -64,6 +66,28 @@ type TPlannerCandidateBlock = TScheduleBlock & {
   roomLabel: string;
   instructorId: string;
 };
+
+/** Bulk plan: different instructors may run parallel in different rooms; only block same instructor or same room overlap. */
+const bulkPlannerCandidateConflictsPlanned = (
+  planned: TPlannerCandidateBlock[],
+  candidate: TPlannerCandidateBlock,
+): boolean =>
+  planned.some((block) => {
+    if (!doScheduleBlocksOverlapByPeriodOrTime(block, candidate)) {
+      return false;
+    }
+    const sameInstructor =
+      Boolean(block.instructorId) &&
+      Boolean(candidate.instructorId) &&
+      block.instructorId === candidate.instructorId;
+    const blockRoomKey = toComparableObjectIdString(block.room);
+    const candidateRoomKey = toComparableObjectIdString(candidate.room);
+    const sameRoom =
+      Boolean(blockRoomKey) &&
+      Boolean(candidateRoomKey) &&
+      blockRoomKey === candidateRoomKey;
+    return sameInstructor || sameRoom;
+  });
 
 const buildRoomLabel = (room: TPlannerRoom) =>
   `${room.roomName} | Building ${room.buildingNumber} | Room ${room.roomNumber} | Cap ${room.capacity}`;
@@ -585,6 +609,45 @@ const getAllOfferedSubjectsFromDB = async (
   };
 };
 
+/** Lean rows for admin scheduling UIs (room / instructor grids). Avoids populate/select quirks on list GET. */
+const getSemesterOccupancySnapshotFromDB = async (
+  semesterRegistrationId: string,
+) => {
+  if (!Types.ObjectId.isValid(semesterRegistrationId)) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'Invalid semester registration id.',
+    );
+  }
+
+  const docs = await OfferedSubject.find({
+    semesterRegistration: new Types.ObjectId(semesterRegistrationId),
+  })
+    .select('instructor scheduleBlocks')
+    .lean();
+
+  return docs.map((doc) => ({
+    _id: doc._id.toString(),
+    instructor: String(doc.instructor),
+    scheduleBlocks: (doc.scheduleBlocks ?? []).map((b) => ({
+      classType: String(b.classType),
+      day: String(b.day).trim(),
+      room: String(b.room),
+      startPeriod: Number(b.startPeriod),
+      periodCount: Number(b.periodCount),
+      periodNumbers: Array.isArray(b.periodNumbers)
+        ? (b.periodNumbers as unknown[])
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n))
+        : [],
+      startTimeSnapshot:
+        typeof b.startTimeSnapshot === 'string' ? b.startTimeSnapshot : '',
+      endTimeSnapshot:
+        typeof b.endTimeSnapshot === 'string' ? b.endTimeSnapshot : '',
+    })),
+  }));
+};
+
 const getMyOfferedSubjectFromDB = async (
   userId: string,
   query: Record<string, unknown>,
@@ -891,7 +954,7 @@ const previewOfferedSubjectConflictsIntoDB = async (payload: {
     resolvedSchedule.scheduleBlocks,
     existingSubjects,
     {
-      instructorId: payload.instructor,
+      instructorId: instructor._id.toString(),
       academicDepartmentId: payload.academicDepartment,
     },
   );
@@ -1625,10 +1688,10 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
                 instructorId: entry.instructor.toString(),
               };
 
-              const internalConflict = [
-                ...batchPlannedBlocks,
-                ...currentSubjectPlannedBlocks,
-              ].some((b) => doScheduleBlocksOverlap(b, candidate));
+              const internalConflict = bulkPlannerCandidateConflictsPlanned(
+                [...batchPlannedBlocks, ...currentSubjectPlannedBlocks],
+                candidate,
+              );
               if (internalConflict) continue;
 
               const externalConflicts = collectScheduleConflicts(
@@ -1831,6 +1894,7 @@ const bulkCreateOfferedSubjectIntoDB = async (payloads: TOfferedSubject[]) => {
 export const OfferedSubjectServices = {
   createOfferedSubjectIntoDB,
   getAllOfferedSubjectsFromDB,
+  getSemesterOccupancySnapshotFromDB,
   getMyOfferedSubjectFromDB,
   getSingleOfferedSubjectFromDB,
   previewOfferedSubjectConflictsIntoDB,

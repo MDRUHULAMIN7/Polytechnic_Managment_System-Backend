@@ -13,9 +13,47 @@ import type {
 
 type TScheduleLikeBlock = {
   day: TDays;
+  /** Room id (string) or BSON ref; overlap checks only use day + time. */
   room?: { toString(): string } | string | null;
   startTimeSnapshot: string;
   endTimeSnapshot: string;
+  /** When set, room overlap matches the admin UI (day + period indices). */
+  periodNumbers?: number[];
+  startPeriod?: number;
+  periodCount?: number;
+};
+
+/**
+ * Normalize ObjectId refs for comparisons. Handles string ids, BSON ObjectIds,
+ * and populated lean docs where `toString()` would otherwise yield "[object Object]".
+ * Avoids recursing on `value._id` when it is the same reference as `value` (Mongoose ObjectId).
+ */
+export const toComparableObjectIdString = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    const t = value.trim();
+    return t.length ? t.toLowerCase() : undefined;
+  }
+  if (typeof value === 'object') {
+    const rec = value as { _id?: unknown; toString?: () => string };
+    // Mongoose ObjectId's `_id` getter can return `this` — never recurse into self.
+    if (
+      rec._id !== null &&
+      rec._id !== undefined &&
+      rec._id !== value
+    ) {
+      return toComparableObjectIdString(rec._id);
+    }
+    if (typeof rec.toString === 'function') {
+      const s = rec.toString.call(value).trim();
+      if (s.length && s !== '[object Object]') {
+        return s.toLowerCase();
+      }
+    }
+  }
+  return undefined;
 };
 
 export type TResolvedSchedulePayload = {
@@ -70,6 +108,55 @@ export const doScheduleBlocksOverlap = (
     second.startTimeSnapshot,
     second.endTimeSnapshot,
   );
+
+/**
+ * Period indices occupied by a block — same rule as the admin room grid
+ * (`startPeriod` .. `startPeriod + periodCount - 1`), preferring `periodNumbers` when present.
+ */
+const expandComparablePeriodNumbers = (
+  block: TScheduleLikeBlock,
+): number[] | undefined => {
+  if (block.periodNumbers?.length) {
+    return block.periodNumbers;
+  }
+  if (
+    typeof block.startPeriod === 'number' &&
+    typeof block.periodCount === 'number' &&
+    block.startPeriod > 0 &&
+    block.periodCount > 0
+  ) {
+    const out: number[] = [];
+    for (
+      let p = block.startPeriod;
+      p < block.startPeriod + block.periodCount;
+      p += 1
+    ) {
+      out.push(p);
+    }
+    return out;
+  }
+  return undefined;
+};
+
+/**
+ * Room / admin-style overlap: same calendar day and shared period slot when both
+ * blocks expose period data; otherwise fall back to snapshot times (legacy rows).
+ */
+export const doScheduleBlocksOverlapByPeriodOrTime = (
+  first: TScheduleLikeBlock,
+  second: TScheduleLikeBlock,
+): boolean => {
+  if (first.day !== second.day) {
+    return false;
+  }
+  const firstPeriods = expandComparablePeriodNumbers(first);
+  const secondPeriods = expandComparablePeriodNumbers(second);
+  if (firstPeriods?.length && secondPeriods?.length) {
+    const secondSet = new Set(secondPeriods);
+    return firstPeriods.some((p) => secondSet.has(p));
+  }
+  return doScheduleBlocksOverlap(first, second);
+};
 
 const buildScheduleSummary = (scheduleBlocks: TScheduleBlock[]) => {
   if (!scheduleBlocks.length) {
@@ -234,12 +321,12 @@ export const extractComparableScheduleBlocks = (
   if (offeredSubject.scheduleBlocks?.length) {
     return offeredSubject.scheduleBlocks.map((block) => ({
       day: block.day,
-      room:
-        typeof block.room === 'string'
-          ? block.room
-          : (block.room?.toString?.() ?? null),
+      room: toComparableObjectIdString(block.room) ?? null,
       startTimeSnapshot: block.startTimeSnapshot,
       endTimeSnapshot: block.endTimeSnapshot,
+      periodNumbers: block.periodNumbers?.length ? block.periodNumbers : undefined,
+      startPeriod: block.startPeriod,
+      periodCount: block.periodCount,
     }));
   }
 
@@ -275,6 +362,8 @@ export const collectScheduleConflicts = (
 ) => {
   const conflicts: TScheduleConflict[] = [];
 
+  const contextInstructorKey = toComparableObjectIdString(context.instructorId);
+
   scheduleBlocks.forEach((scheduleBlock, index) => {
     existingSubjects.forEach((existingSubject) => {
       const existingBlocks = extractComparableScheduleBlocks(existingSubject);
@@ -294,14 +383,14 @@ export const collectScheduleConflicts = (
         typeof existingSubject._id === 'string'
           ? existingSubject._id
           : existingSubject._id?.toString?.();
-      const existingInstructorId =
-        typeof existingSubject.instructor === 'string'
-          ? existingSubject.instructor
-          : existingSubject.instructor?.toString?.();
+      const existingInstructorKey = toComparableObjectIdString(
+        existingSubject.instructor,
+      );
 
       if (
-        existingInstructorId &&
-        existingInstructorId === context.instructorId
+        existingInstructorKey &&
+        contextInstructorKey &&
+        existingInstructorKey === contextInstructorKey
       ) {
         conflicts.push({
           type: 'INSTRUCTOR_CONFLICT',
@@ -311,12 +400,21 @@ export const collectScheduleConflicts = (
         });
       }
 
-      const roomConflict = existingBlocks.some(
-        (existingBlock) =>
-          existingBlock.room &&
-          existingBlock.room === scheduleBlock.room.toString() &&
-          doScheduleBlocksOverlap(scheduleBlock, existingBlock),
+      const candidateRoomKey = toComparableObjectIdString(
+        scheduleBlock.room as unknown,
       );
+
+      const roomConflict = existingBlocks.some((existingBlock) => {
+        const existingRoomKey = toComparableObjectIdString(
+          existingBlock.room as unknown,
+        );
+        return (
+          Boolean(existingRoomKey) &&
+          Boolean(candidateRoomKey) &&
+          existingRoomKey === candidateRoomKey &&
+          doScheduleBlocksOverlapByPeriodOrTime(scheduleBlock, existingBlock)
+        );
+      });
 
       if (roomConflict) {
         conflicts.push({
