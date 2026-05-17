@@ -41,7 +41,10 @@ const getSinglePeriodConfig = catchAsync(async (req, res) => {
 });
 
 const getActivePeriodConfig = catchAsync(async (req, res) => {
-  const result = await PeriodConfigServices.getActivePeriodConfigFromDB();
+  const result = await PeriodConfigServices.getActivePeriodConfigFromDB(
+    req.query.shift as string,
+    req.query.semesterRegistrationId as string,
+  );
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,

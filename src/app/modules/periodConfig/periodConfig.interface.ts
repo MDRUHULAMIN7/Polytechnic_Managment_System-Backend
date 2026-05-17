@@ -1,3 +1,5 @@
+export type TPeriodConfigShift = 'MORNING' | 'DAY';
+
 export type TPeriodConfigItem = {
   periodNo: number;
   title?: string;
@@ -10,6 +12,7 @@ export type TPeriodConfigItem = {
 
 export type TPeriodConfig = {
   label: string;
+  shift: TPeriodConfigShift;
   effectiveFrom: Date;
   isActive?: boolean;
   periods: TPeriodConfigItem[];

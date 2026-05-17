@@ -37,6 +37,9 @@ const periodItemSchema = z
 
 const basePeriodConfigSchema = z.object({
   label: z.string().trim().min(1, 'Label is required.'),
+  shift: z.enum(['MORNING', 'DAY'], {
+    error: 'Shift must be either MORNING or DAY.',
+  }),
   effectiveFrom: z.string().trim().min(1, 'Effective date is required.'),
   isActive: z.boolean().optional(),
   periods: z
@@ -49,7 +52,7 @@ const basePeriodConfigSchema = z.object({
       sorted.forEach((period, index) => {
         if (seen.has(period.periodNo)) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Period ${period.periodNo} is duplicated.`,
             path: [index, 'periodNo'],
           });
@@ -63,7 +66,7 @@ const basePeriodConfigSchema = z.object({
 
         if (timeToMinutes(current.startTime) < timeToMinutes(previous.endTime)) {
           ctx.addIssue({
-            code: z.ZodIssueCode.custom,
+            code: 'custom',
             message: `Period ${current.periodNo} overlaps with period ${previous.periodNo}.`,
             path: [index, 'startTime'],
           });

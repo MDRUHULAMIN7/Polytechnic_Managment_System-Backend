@@ -1,103 +1,17 @@
 import { StatusCodes } from 'http-status-codes';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
 import AppError from '../../errors/AppError.js';
-import type { TPeriodConfig, TPeriodConfigItem } from './periodConfig.interface.js';
-import { timeToMinutes } from './periodConfig.constant.js';
+import type { TPeriodConfig } from './periodConfig.interface.js';
 import { PeriodConfig } from './periodConfig.model.js';
-
-const normalizePeriodItems = (periods: TPeriodConfigItem[]) =>
-  [...periods]
-    .map((period) => ({
-      ...period,
-      title: period.title?.trim() || `Period ${period.periodNo}`,
-      isBreak: period.isBreak ?? false,
-      isActive: period.isActive ?? true,
-    }))
-    .sort((left, right) => left.periodNo - right.periodNo);
-
-const assertPeriodsAreValid = (periods: TPeriodConfigItem[]) => {
-  const seen = new Set<number>();
-
-  for (let index = 0; index < periods.length; index += 1) {
-    const current = periods[index];
-
-    if (seen.has(current.periodNo)) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        `Period ${current.periodNo} can not be duplicated.`,
-      );
-    }
-    seen.add(current.periodNo);
-
-    if (timeToMinutes(current.endTime) <= timeToMinutes(current.startTime)) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        `Period ${current.periodNo} has an invalid time range.`,
-      );
-    }
-
-    if (
-      timeToMinutes(current.endTime) - timeToMinutes(current.startTime) !==
-      current.durationMinutes
-    ) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        `Period ${current.periodNo} duration does not match the selected time range.`,
-      );
-    }
-
-    if (index === 0) {
-      continue;
-    }
-
-    const previous = periods[index - 1];
-    if (timeToMinutes(current.startTime) < timeToMinutes(previous.endTime)) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        `Period ${current.periodNo} overlaps with period ${previous.periodNo}.`,
-      );
-    }
-  }
-};
-
-const normalizePayload = (payload: TPeriodConfig) => {
-  const label = payload.label.trim();
-
-  if (!label) {
-    throw new AppError(StatusCodes.BAD_REQUEST, 'Period configuration label is required.');
-  }
-
-  const periods = normalizePeriodItems(payload.periods);
-  assertPeriodsAreValid(periods);
-
-  return {
-    ...payload,
-    label,
-    periods,
-    isActive: payload.isActive ?? false,
-  };
-};
-
-const ensureOnlyOneActiveConfig = async (
-  isActive: boolean | undefined,
-  excludeId?: string,
-) => {
-  if (!isActive) {
-    return;
-  }
-
-  await PeriodConfig.updateMany(
-    excludeId ? { _id: { $ne: excludeId } } : {},
-    { $set: { isActive: false } },
-  );
-};
+import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
+import { ensureOnlyOneActiveConfig, normalizePayload } from './periodConfig.utils.js';
 
 const createPeriodConfigIntoDB = async (
   payload: TPeriodConfig,
   actorId?: string,
 ) => {
   const normalizedPayload = normalizePayload(payload);
-  await ensureOnlyOneActiveConfig(normalizedPayload.isActive);
+  await ensureOnlyOneActiveConfig(normalizedPayload.shift, normalizedPayload.isActive);
 
   return PeriodConfig.create({
     ...normalizedPayload,
@@ -120,7 +34,7 @@ const getAllPeriodConfigsFromDB = async (query: Record<string, unknown>) => {
   }
 
   const periodConfigQuery = new QueryBuilder(PeriodConfig.find(), queryObj)
-    .search(['label'])
+    .search(['label', 'shift'])
     .filter()
     .sort()
     .paginate()
@@ -145,8 +59,26 @@ const getSinglePeriodConfigFromDB = async (id: string) => {
   return result;
 };
 
-const getActivePeriodConfigFromDB = async () => {
-  const result = await PeriodConfig.findOne({ isActive: true }).sort({
+
+const getActivePeriodConfigFromDB = async (
+  shift?: string,
+  semesterRegistrationId?: string,
+) => {
+  let targetShift = shift;
+
+  if (!targetShift && semesterRegistrationId) {
+    const registration = await SemesterRegistration.findById(semesterRegistrationId).select('shift');
+    if (registration) {
+      targetShift = registration.shift;
+    }
+  }
+
+  const query: Record<string, unknown> = { isActive: true };
+  if (targetShift) {
+    query.shift = targetShift;
+  }
+
+  const result = await PeriodConfig.findOne(query).sort({
     effectiveFrom: -1,
     createdAt: -1,
   });
@@ -154,7 +86,7 @@ const getActivePeriodConfigFromDB = async () => {
   if (!result) {
     throw new AppError(
       StatusCodes.NOT_FOUND,
-      'No active period configuration found. Please configure periods first.',
+      `No active period configuration found${targetShift ? ` for ${targetShift} shift` : ''}. Please configure periods first.`,
     );
   }
 
@@ -173,7 +105,7 @@ const updatePeriodConfigIntoDB = async (
   }
 
   const normalizedPayload = normalizePayload(payload);
-  await ensureOnlyOneActiveConfig(normalizedPayload.isActive, id);
+  await ensureOnlyOneActiveConfig(normalizedPayload.shift, normalizedPayload.isActive, id);
 
   const result = await PeriodConfig.findByIdAndUpdate(
     id,

@@ -491,9 +491,10 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
   }
 
   const resolvedSchedule = await resolveSchedulePayload(
-        scheduleBlocks as unknown as TScheduleBlockInput[],
-        maxCapacity,
-      );
+    scheduleBlocks as unknown as TScheduleBlockInput[],
+    maxCapacity,
+    references.semesterRegistration.shift,
+  );
 
       // --- New Safety Checks & Validation Logic ---
       validateScheduleBlocksForSubject(isSubjectExits, resolvedSchedule.scheduleBlocks);
@@ -921,7 +922,7 @@ const previewOfferedSubjectConflictsIntoDB = async (payload: {
 }) => {
   const semesterRegistration = await SemesterRegistration.findById(
     payload.semesterRegistration,
-  ).select('_id');
+  ).select('_id shift');
 
   if (!semesterRegistration) {
     throw new AppError(
@@ -949,6 +950,7 @@ const previewOfferedSubjectConflictsIntoDB = async (payload: {
   const resolvedSchedule = await resolveSchedulePayload(
     payload.scheduleBlocks,
     payload.maxCapacity,
+    semesterRegistration.shift,
   );
   const existingSubjects = await fetchComparableOfferedSubjects(
     payload.semesterRegistration,
@@ -1011,7 +1013,7 @@ const planOfferedSubjectScheduleIntoDB = async (
   let activePeriodConfig;
   try {
     activePeriodConfig =
-      await PeriodConfigServices.getActivePeriodConfigFromDB();
+      await PeriodConfigServices.getActivePeriodConfigFromDB(references.semesterRegistration.shift);
   } catch (error: any) {
     throw new AppError(
       error.statusCode || StatusCodes.INTERNAL_SERVER_ERROR,
@@ -1223,6 +1225,7 @@ const planOfferedSubjectScheduleIntoDB = async (
       periodCount: block.periodCount,
     })),
     maxCapacity,
+    references.semesterRegistration.shift,
   );
 
   const roomLabelMap = new Map(
@@ -1321,6 +1324,7 @@ const updateOfferedSubjectIntoDB = async (
   const resolvedSchedule = await resolveSchedulePayload(
     scheduleBlocks as unknown as TScheduleBlockInput[],
     maxCapacity,
+    semesterRegistrationStatus.shift,
   );
 
   const subjectDetails = await Subject.findById(isOfferedSubjectExists.subject);
@@ -1505,7 +1509,7 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
   let activePeriodConfig;
   try {
     activePeriodConfig =
-      await PeriodConfigServices.getActivePeriodConfigFromDB();
+      await PeriodConfigServices.getActivePeriodConfigFromDB(registration.shift);
   } catch (error: any) {
     throw new AppError(
       error.statusCode || StatusCodes.INTERNAL_SERVER_ERROR,
@@ -1750,6 +1754,7 @@ const planBulkOfferedSubjectScheduleIntoDB = async (
           periodCount: b.periodCount,
         })),
         entry.maxCapacity,
+        registration.shift,
       );
 
       const roomLabelMap = new Map(
@@ -1857,6 +1862,7 @@ const bulkCreateOfferedSubjectIntoDB = async (payloads: TOfferedSubject[]) => {
       const resolvedSchedule = await resolveSchedulePayload(
         scheduleBlocks as unknown as TScheduleBlockInput[],
         maxCapacity,
+        references.semesterRegistration.shift,
       );
 
       // --- New Safety Checks & Validation Logic ---

@@ -250,8 +250,9 @@ export const validateScheduleBlocksForSubject = (
 
 const resolveBlocksAgainstActiveConfig = async (
   blocks: TScheduleBlockInput[],
+  shift?: string,
 ): Promise<TScheduleBlock[]> => {
-  const activeConfig = await PeriodConfigServices.getActivePeriodConfigFromDB();
+  const activeConfig = await PeriodConfigServices.getActivePeriodConfigFromDB(shift);
   const validPeriods = [...(activeConfig.periods ?? [])]
     .filter((period) => period.isActive !== false && period.isBreak !== true)
     .sort((left, right) => left.periodNo - right.periodNo);
@@ -335,10 +336,11 @@ const ensureNoInternalScheduleOverlap = (scheduleBlocks: TScheduleBlock[]) => {
 };
 
 export const resolveSchedulePayload = async (
-  scheduleBlocks: TScheduleBlockInput[],
+  blocks: TScheduleBlockInput[],
   maxCapacity: number,
+  shift?: string,
 ): Promise<TResolvedSchedulePayload> => {
-  const resolvedBlocks = await resolveBlocksAgainstActiveConfig(scheduleBlocks);
+  const resolvedBlocks = await resolveBlocksAgainstActiveConfig(blocks, shift);
   ensureNoInternalScheduleOverlap(resolvedBlocks);
 
   const uniqueRoomIds = Array.from(

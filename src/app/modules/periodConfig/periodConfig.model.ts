@@ -1,5 +1,6 @@
 import mongoose, { Schema } from 'mongoose';
 import type { TPeriodConfig, TPeriodConfigItem } from './periodConfig.interface.js';
+import { SemesterRegistrationShift } from '../semesterRegistration/semesterRegistration.constant.js';
 
 const periodConfigItemSchema = new Schema<TPeriodConfigItem>(
   {
@@ -46,6 +47,12 @@ const periodConfigSchema = new Schema<TPeriodConfig>(
       required: true,
       trim: true,
     },
+    shift: {
+      type: String,
+      enum: SemesterRegistrationShift,
+      required: true,
+      default: 'DAY',
+    },
     effectiveFrom: {
       type: Date,
       required: true,
@@ -74,7 +81,7 @@ const periodConfigSchema = new Schema<TPeriodConfig>(
   },
 );
 
-periodConfigSchema.index({ isActive: 1, effectiveFrom: -1 });
+periodConfigSchema.index({ shift: 1, isActive: 1, effectiveFrom: -1 });
 
 export const PeriodConfig = mongoose.model<TPeriodConfig>(
   'PeriodConfig',
