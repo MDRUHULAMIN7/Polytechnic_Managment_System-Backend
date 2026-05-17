@@ -192,6 +192,62 @@ const buildScheduleSummary = (scheduleBlocks: TScheduleBlock[]) => {
   };
 };
 
+export const validateScheduleBlocksForSubject = (
+  subject: {
+    credits: number;
+    theoryPeriodsPerWeek?: number;
+    practicalPeriodsPerWeek?: number;
+  },
+  scheduleBlocks: TScheduleBlock[],
+) => {
+  const theoryCount = scheduleBlocks.filter(
+    (b) => b.classType === 'theory',
+  ).length;
+  const practicalCount = scheduleBlocks.filter(
+    (b) => b.classType === 'practical',
+  ).length;
+
+  // 1. Weekly Theory Classes
+  const requiredTheory = subject.theoryPeriodsPerWeek ?? 0;
+  if (theoryCount !== requiredTheory) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Theory class mismatch. Required: ${requiredTheory}, Assigned: ${theoryCount}.`,
+    );
+  }
+
+  // 2. Practical Class Calculation Logic (1 class per 3 periods)
+  const requiredPracticalPeriods = subject.practicalPeriodsPerWeek ?? 0;
+  const expectedPracticalClasses = Math.floor(requiredPracticalPeriods / 3);
+  if (practicalCount !== expectedPracticalClasses) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Practical class mismatch. Required: ${expectedPracticalClasses} (for ${requiredPracticalPeriods} periods), Assigned: ${practicalCount}.`,
+    );
+  }
+
+  // 3. Total Classes vs Credits
+  const totalClasses = theoryCount + practicalCount;
+  if (totalClasses !== subject.credits) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `Total classes (${totalClasses}) must match subject credits (${subject.credits}).`,
+    );
+  }
+
+  // 4. No multiple classes of same subject in a day
+  const daysWithClasses = new Set<string>();
+  for (const b of scheduleBlocks) {
+    if (daysWithClasses.has(b.day)) {
+      throw new AppError(
+        StatusCodes.BAD_REQUEST,
+        `একদিনে একই সাবজেক্টের একাধিক ক্লাস বরাদ্দ করা যাবে না (${b.day})`,
+      );
+    }
+    daysWithClasses.add(b.day);
+  }
+};
+
 const resolveBlocksAgainstActiveConfig = async (
   blocks: TScheduleBlockInput[],
 ): Promise<TScheduleBlock[]> => {

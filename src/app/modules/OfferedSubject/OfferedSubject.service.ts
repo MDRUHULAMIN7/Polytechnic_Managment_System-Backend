@@ -35,6 +35,7 @@ import {
   fetchComparableOfferedSubjects,
   resolveSchedulePayload,
   toComparableObjectIdString,
+  validateScheduleBlocksForSubject,
 } from './OfferedSubject.utils.js';
 import { DaySortOrder, timeToMinutes } from './OfferedSubject.constant.js';
 
@@ -490,11 +491,14 @@ const createOfferedSubjectIntoDB = async (payload: TOfferedSubject) => {
   }
 
   const resolvedSchedule = await resolveSchedulePayload(
-    scheduleBlocks as unknown as TScheduleBlockInput[],
-    maxCapacity,
-  );
+        scheduleBlocks as unknown as TScheduleBlockInput[],
+        maxCapacity,
+      );
 
-  const existingSubjects = await fetchComparableOfferedSubjects(
+      // --- New Safety Checks & Validation Logic ---
+      validateScheduleBlocksForSubject(isSubjectExits, resolvedSchedule.scheduleBlocks);
+
+      const existingSubjects = await fetchComparableOfferedSubjects(
     semesterRegistration.toString(),
   );
   const conflicts = collectScheduleConflicts(
@@ -1318,6 +1322,15 @@ const updateOfferedSubjectIntoDB = async (
     scheduleBlocks as unknown as TScheduleBlockInput[],
     maxCapacity,
   );
+
+  const subjectDetails = await Subject.findById(isOfferedSubjectExists.subject);
+  if (!subjectDetails) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found!');
+  }
+
+  // --- New Safety Checks & Validation Logic ---
+  validateScheduleBlocksForSubject(subjectDetails, resolvedSchedule.scheduleBlocks);
+
   const existingSubjects = await fetchComparableOfferedSubjects(
     semesterRegistration.toString(),
     id,
@@ -1845,6 +1858,9 @@ const bulkCreateOfferedSubjectIntoDB = async (payloads: TOfferedSubject[]) => {
         scheduleBlocks as unknown as TScheduleBlockInput[],
         maxCapacity,
       );
+
+      // --- New Safety Checks & Validation Logic ---
+      validateScheduleBlocksForSubject(isSubjectExits, resolvedSchedule.scheduleBlocks);
 
       const existingSubjects = await fetchComparableOfferedSubjects(
         semesterRegistration.toString(),
