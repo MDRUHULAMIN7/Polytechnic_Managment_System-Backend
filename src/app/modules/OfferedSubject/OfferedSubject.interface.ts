@@ -41,6 +41,7 @@ export type TOfferedSubject = {
   subject: Types.ObjectId;
   instructor: Types.ObjectId;
   maxCapacity: number;
+  totalCapacity: number;
   days: TDays[];
   startTime: string;
   endTime: string;
@@ -109,4 +110,30 @@ export type TBulkOfferedSubjectSchedulePlanInput = {
 export type TBulkOfferedSubjectSchedulePlan = {
   plans: (TOfferedSubjectSchedulePlan & { subjectId: string })[];
   summary: string;
+};
+export type TPlannerPeriod = {
+  periodNo: number;
+  startTime: string;
+  endTime: string;
+};
+
+export type TPlannerRoom = {
+  _id: Types.ObjectId;
+  roomName: string;
+  roomNumber: number;
+  buildingNumber: number;
+  capacity: number;
+  roomType: 'theory' | 'practical' | 'both';
+};
+
+export type TPlannerBlueprint = {
+  classType: 'theory' | 'practical' | 'tutorial';
+  periodCount: number;
+  label: string;
+  minimumPeriodCount?: number;
+};
+
+export type TPlannerCandidateBlock = TScheduleBlock & {
+  roomLabel: string;
+  instructorId: string;
 };

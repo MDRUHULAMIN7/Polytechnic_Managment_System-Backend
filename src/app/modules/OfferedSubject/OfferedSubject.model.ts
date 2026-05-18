@@ -119,6 +119,10 @@ const offeredSubjectSchema = new mongoose.Schema<TOfferedSubject>(
       type: Number,
       required: true,
     },
+    totalCapacity: {
+      type: Number,
+      required: true,
+    },
     days: [
       {
         type: String,

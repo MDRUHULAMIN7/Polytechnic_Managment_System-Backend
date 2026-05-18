@@ -7,9 +7,18 @@ import { DaySortOrder, timeToMinutes } from './OfferedSubject.constant.js';
 import type {
   TDays,
   TOfferedSubject,
+  TPlannerBlueprint,
+  TPlannerCandidateBlock,
+  TPlannerPeriod,
+  TPlannerRoom,
   TScheduleBlock,
   TScheduleBlockInput,
 } from './OfferedSubject.interface.js';
+import { Instructor } from '../Instructor/Instructor.model.js';
+import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
+import { AcademicInstructor } from '../academicInstructor/academicInstructor.model.js';
+import { AcademicDepartment } from '../academicDepartment/academicDepartment.model.js';
+import { Subject } from '../subject/subject.model.js';
 
 type TScheduleLikeBlock = {
   day: TDays;
@@ -517,4 +526,465 @@ export const fetchComparableOfferedSubjects = async (
   }).select(
     'instructor academicDepartment scheduleBlocks days startTime endTime',
   );
+};
+
+/** Bulk plan: different instructors may run parallel in different rooms; only block same instructor or same room overlap. */
+export const bulkPlannerCandidateConflictsPlanned = (
+  planned: TPlannerCandidateBlock[],
+  candidate: TPlannerCandidateBlock,
+): boolean =>
+  planned.some((block) => {
+    if (!doScheduleBlocksOverlapByPeriodOrTime(block, candidate)) {
+      return false;
+    }
+    const sameInstructor =
+      Boolean(block.instructorId) &&
+      Boolean(candidate.instructorId) &&
+      block.instructorId === candidate.instructorId;
+    const blockRoomKey = toComparableObjectIdString(block.room);
+    const candidateRoomKey = toComparableObjectIdString(candidate.room);
+    const sameRoom =
+      Boolean(blockRoomKey) &&
+      Boolean(candidateRoomKey) &&
+      blockRoomKey === candidateRoomKey;
+    return sameInstructor || sameRoom;
+  });
+
+export const buildRoomLabel = (room: TPlannerRoom) =>
+  `${room.roomName} | Building ${room.buildingNumber} | Room ${room.roomNumber} | Cap ${room.capacity}`;
+
+export const buildSubjectMeetingBlueprint = (subject: {
+  credits: number;
+  subjectType: string;
+  markingScheme?: {
+    practicalContinuous?: number;
+    practicalFinal?: number;
+  };
+}) => {
+  const roundedCredits = Math.max(1, Math.round(subject.credits || 1));
+  const practicalMarks =
+    (subject.markingScheme?.practicalContinuous ?? 0) +
+    (subject.markingScheme?.practicalFinal ?? 0);
+  const includesPractical =
+    practicalMarks > 0 ||
+    [
+      'THEORY_PRACTICAL',
+      'PRACTICAL_ONLY',
+      'PROJECT',
+      'INDUSTRIAL_ATTACHMENT',
+    ].includes(subject.subjectType);
+  const reasoning: string[] = [
+    `Used ${roundedCredits} weekly meeting target from the subject credit value.`,
+  ];
+
+  let blocks: TPlannerBlueprint[] = [];
+
+  switch (subject.subjectType) {
+    case 'THEORY':
+      blocks = Array.from({ length: roundedCredits }, (_, index) => ({
+        classType: 'theory' as const,
+        periodCount: 1,
+        label: `Theory class ${index + 1}`,
+      }));
+      reasoning.push(
+        'Theory subjects were spread as one-period meetings across separate days.',
+      );
+      break;
+    case 'THEORY_PRACTICAL':
+      blocks = [
+        {
+          classType: 'practical' as const,
+          periodCount: 3,
+          label: 'Practical class',
+        },
+        ...Array.from(
+          { length: Math.max(0, roundedCredits - 1) },
+          (_, index) => ({
+            classType: 'theory' as const,
+            periodCount: 1,
+            label: `Theory class ${index + 1}`,
+          }),
+        ),
+      ];
+      reasoning.push(
+        'Theory-practical subjects were planned as one 3-period lab block plus the remaining 1-period theory meetings.',
+      );
+      break;
+    case 'PRACTICAL_ONLY':
+      blocks = Array.from({ length: roundedCredits }, (_, index) => ({
+        classType: 'practical' as const,
+        periodCount: 3,
+        label: `Practical block ${index + 1}`,
+      }));
+      reasoning.push(
+        'Practical-only subjects were spread across days as 3-period lab blocks.',
+      );
+      break;
+    case 'PROJECT':
+      blocks = [
+        {
+          classType: 'tutorial' as const,
+          periodCount: 1,
+          label: 'Project supervision',
+        },
+        ...Array.from(
+          { length: Math.max(0, roundedCredits - 1) },
+          (_, index) => ({
+            classType: 'practical' as const,
+            periodCount: 3,
+            label: `Project work block ${index + 1}`,
+          }),
+        ),
+      ];
+      reasoning.push(
+        'Project subjects were balanced between 1-period supervision and 3-period work blocks.',
+      );
+      break;
+    case 'INDUSTRIAL_ATTACHMENT':
+      blocks = [
+        {
+          classType: 'tutorial' as const,
+          periodCount: 1,
+          label: 'Attachment briefing',
+        },
+      ];
+      reasoning.push(
+        'Industrial attachment was treated as a 1-period briefing block.',
+      );
+      break;
+    default:
+      blocks = Array.from(
+        { length: Math.min(roundedCredits, 5) },
+        (_, index) => ({
+          classType: (includesPractical ? 'practical' : 'theory') as
+            | 'practical'
+            | 'theory',
+          periodCount: includesPractical ? 3 : 1,
+          label: `Session ${index + 1}`,
+        }),
+      );
+      reasoning.push(
+        'Fallback planner rules: Theory classes use 1 period, Practical classes use 3 periods.',
+      );
+      break;
+  }
+
+  if (
+    includesPractical &&
+    !blocks.some((block) => block.classType === 'practical')
+  ) {
+    blocks.push({
+      classType: 'practical',
+      periodCount: 3,
+      label: 'Practical class',
+    });
+    reasoning.push(
+      'Added one 3-period practical block because the marking scheme contains practical marks.',
+    );
+  }
+
+  return {
+    blocks: blocks.sort((left, right) => right.periodCount - left.periodCount),
+    reasoning,
+  };
+};
+
+export const buildContiguousPeriodOptions = (
+  periods: TPlannerPeriod[],
+  desiredCount: number,
+) => {
+  const options: Array<{
+    startPeriod: number;
+    periodCount: number;
+    periodNumbers: number[];
+    startTimeSnapshot: string;
+    endTimeSnapshot: string;
+  }> = [];
+
+  for (
+    let startIndex = 0;
+    startIndex <= periods.length - desiredCount;
+    startIndex += 1
+  ) {
+    const selected = periods.slice(startIndex, startIndex + desiredCount);
+    const isContiguous = selected.every((period, index) => {
+      if (index === 0) {
+        return true;
+      }
+      return period.periodNo === selected[index - 1].periodNo + 1;
+    });
+
+    if (!isContiguous) {
+      continue;
+    }
+
+    options.push({
+      startPeriod: selected[0].periodNo,
+      periodCount: desiredCount,
+      periodNumbers: selected.map((period) => period.periodNo),
+      startTimeSnapshot: selected[0].startTime,
+      endTimeSnapshot: selected[selected.length - 1].endTime,
+    });
+  }
+
+  return options;
+};
+
+export const sortPlannerBlocks = (blocks: TPlannerCandidateBlock[]) =>
+  [...blocks].sort((left, right) => {
+    const dayDelta =
+      (DaySortOrder[left.day] ?? 0) - (DaySortOrder[right.day] ?? 0);
+    if (dayDelta !== 0) {
+      return dayDelta;
+    }
+
+    return (
+      timeToMinutes(left.startTimeSnapshot) -
+      timeToMinutes(right.startTimeSnapshot)
+    );
+  });
+
+export const resolveInstructorIdFromUserId = async (userId: string) => {
+  const instructor = await Instructor.findOne({ id: userId }).select('_id');
+
+  if (!instructor) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found !');
+  }
+
+  return instructor._id;
+};
+
+export const pickFirstConflictMessage = (
+  conflicts: ReturnType<typeof collectScheduleConflicts>,
+) => {
+  const priorityOrder = [
+    'ROOM_CONFLICT',
+    'INSTRUCTOR_CONFLICT',
+    'DEPARTMENT_CONFLICT',
+  ] as const;
+
+  for (const type of priorityOrder) {
+    const match = conflicts.find((conflict) => conflict.type === type);
+    if (match) {
+      return match.message;
+    }
+  }
+
+  return conflicts[0]?.message ?? 'Schedule conflict detected.';
+};
+
+export const ensureCommonReferencesExist = async (payload: {
+  semesterRegistration: TOfferedSubject['semesterRegistration'];
+  academicInstructor: TOfferedSubject['academicInstructor'];
+  academicDepartment: TOfferedSubject['academicDepartment'];
+  subject?: TOfferedSubject['subject'];
+  instructor: TOfferedSubject['instructor'];
+}) => {
+  const isSemesterRegistrationExits = await SemesterRegistration.findById(
+    payload.semesterRegistration,
+  );
+
+  if (!isSemesterRegistrationExits) {
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Semester registration not found !',
+    );
+  }
+
+  const isAcademicInstructorExits = await AcademicInstructor.findById(
+    payload.academicInstructor,
+  );
+
+  if (!isAcademicInstructorExits) {
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Academic Instructor not found !',
+    );
+  }
+
+  const isAcademicDepartmentExits = await AcademicDepartment.findById(
+    payload.academicDepartment,
+  );
+
+  if (!isAcademicDepartmentExits) {
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Academic Department not found !',
+    );
+  }
+
+  const isInstructorExits = await Instructor.findById(payload.instructor);
+
+  if (!isInstructorExits) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Instructor not found !');
+  }
+
+  if (payload.subject) {
+    const isSubjectExits = await Subject.findById(payload.subject);
+
+    if (!isSubjectExits) {
+      throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found !');
+    }
+  }
+
+  const isDepartmentBelongToInstructor = await AcademicDepartment.findOne({
+    _id: payload.academicDepartment,
+    academicInstructor: payload.academicInstructor,
+  });
+
+  if (!isDepartmentBelongToInstructor) {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      `This ${isAcademicDepartmentExits.name} is not belong to this ${isAcademicInstructorExits.name}.`,
+    );
+  }
+
+  return {
+    semesterRegistration: isSemesterRegistrationExits,
+    academicDepartment: isAcademicDepartmentExits,
+  };
+};
+
+export const getRequestedFields = (queryObj: Record<string, unknown>) => {
+  if (typeof queryObj.fields !== 'string' || !queryObj.fields.trim()) {
+    return null;
+  }
+
+  return new Set(
+    queryObj.fields
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean),
+  );
+};
+
+export const shouldPopulateField = (
+  requestedFields: Set<string> | null,
+  field: string,
+) => !requestedFields || requestedFields.has(field);
+
+export const buildOfferedSubjectQuery = (queryObj: Record<string, unknown>) => {
+  const requestedFields = getRequestedFields(queryObj);
+  let query = OfferedSubject.find();
+
+  if (shouldPopulateField(requestedFields, 'semesterRegistration')) {
+    query = query.populate({
+      path: 'semesterRegistration',
+      select: 'status shift startDate endDate academicSemester',
+      populate: { path: 'academicSemester', select: 'name year' },
+    });
+  }
+
+  if (shouldPopulateField(requestedFields, 'academicSemester')) {
+    query = query.populate('academicSemester', 'name year');
+  }
+
+  if (shouldPopulateField(requestedFields, 'academicDepartment')) {
+    query = query.populate('academicDepartment', 'name');
+  }
+
+  if (shouldPopulateField(requestedFields, 'subject')) {
+    query = query.populate(
+      'subject',
+      'title code credits subjectType markingScheme',
+    );
+  }
+
+  if (shouldPopulateField(requestedFields, 'instructor')) {
+    query = query.populate('instructor', 'id name designation');
+  }
+
+  if (shouldPopulateField(requestedFields, 'scheduleBlocks')) {
+    query = query.populate(
+      'scheduleBlocks.room',
+      'roomName roomNumber buildingNumber capacity',
+    );
+  }
+
+  return query;
+};
+
+export const validateAndResolveOfferedSubject = async (
+  payload: Pick<
+    TOfferedSubject,
+    | 'semesterRegistration'
+    | 'academicInstructor'
+    | 'academicDepartment'
+    | 'subject'
+    | 'instructor'
+    | 'maxCapacity'
+    | 'scheduleBlocks'
+  >,
+  excludeOfferedSubjectId?: string,
+) => {
+  const {
+    semesterRegistration,
+    academicInstructor,
+    academicDepartment,
+    subject,
+    instructor,
+    maxCapacity,
+    scheduleBlocks,
+  } = payload;
+
+  const references = await ensureCommonReferencesExist({
+    semesterRegistration,
+    academicInstructor,
+    academicDepartment,
+    subject,
+    instructor,
+  });
+
+  if (references.semesterRegistration.status === 'ENDED') {
+    throw new AppError(
+      StatusCodes.BAD_REQUEST,
+      'The semester registration was already ended.',
+    );
+  }
+
+  const academicSemester = references.semesterRegistration.academicSemester;
+
+  const isSubjectExits = await Subject.findById(subject);
+  if (!isSubjectExits) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found !');
+  }
+
+  const resolvedSchedule = await resolveSchedulePayload(
+    scheduleBlocks as unknown as TScheduleBlockInput[],
+    maxCapacity,
+    references.semesterRegistration.shift,
+  );
+
+  validateScheduleBlocksForSubject(
+    isSubjectExits,
+    resolvedSchedule.scheduleBlocks,
+  );
+
+  const existingSubjects = await fetchComparableOfferedSubjects(
+    semesterRegistration.toString(),
+    excludeOfferedSubjectId,
+  );
+
+  const conflicts = collectScheduleConflicts(
+    resolvedSchedule.scheduleBlocks,
+    existingSubjects,
+    {
+      instructorId: instructor.toString(),
+      academicDepartmentId: academicDepartment.toString(),
+    },
+  );
+
+  if (conflicts.length) {
+    throw new AppError(
+      StatusCodes.CONFLICT,
+      pickFirstConflictMessage(conflicts),
+    );
+  }
+
+  return {
+    academicSemester,
+    resolvedSchedule,
+    isSubjectExits,
+    references,
+  };
 };

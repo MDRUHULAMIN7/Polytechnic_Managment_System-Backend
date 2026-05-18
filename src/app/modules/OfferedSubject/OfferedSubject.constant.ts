@@ -16,4 +16,4 @@ export const timeToMinutes = (time: string) => {
   return hour * 60 + minute;
 };
 
-
+ export const PLANNER_WORKING_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu'] as const;
