@@ -1,22 +1,17 @@
-import AppError from '../../errors/AppError.js';
 import { StatusCodes } from 'http-status-codes';
+import AppError from '../../errors/AppError.js';
+import {
+  AssessmentBuckets,
+  AssessmentComponentTypes,
+} from './subject.constant.js';
 import type {
   TAssessmentBucket,
   TAssessmentComponent,
   TAssessmentComponentType,
   TSubjectMarkingScheme,
 } from './subject.interface.js';
-import {
-  AssessmentBuckets,
-  AssessmentComponentTypes,
-} from './subject.constant.js';
 
-type TMarkingPayload = {
-  markingScheme: TSubjectMarkingScheme;
-  assessmentComponents: TAssessmentComponent[];
-};
-
-const bucketToSchemeKey: Record<
+const BUCKET_TO_SCHEME_KEY: Record<
   TAssessmentBucket,
   keyof TSubjectMarkingScheme
 > = {
@@ -26,7 +21,7 @@ const bucketToSchemeKey: Record<
   PRACTICAL_FINAL: 'practicalFinal',
 };
 
-const fallbackBucketMeta: Record<
+const FALLBACK_BUCKET_META: Record<
   TAssessmentBucket,
   {
     codePrefix: string;
@@ -56,7 +51,7 @@ const fallbackBucketMeta: Record<
   },
 };
 
-const bucketByComponentType: Record<
+const BUCKET_BY_COMPONENT_TYPE: Record<
   TAssessmentComponentType,
   TAssessmentBucket
 > = {
@@ -74,14 +69,6 @@ const bucketByComponentType: Record<
   industry_evaluation: 'PRACTICAL_FINAL',
 };
 
-function sanitizeCodeSegment(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 function isAssessmentBucket(value: unknown): value is TAssessmentBucket {
   return (
     typeof value === 'string' &&
@@ -98,35 +85,9 @@ function isAssessmentComponentType(
   );
 }
 
-function guessBucketFromText(value?: string | null) {
-  const normalizedValue = value?.trim().toLowerCase();
-
-  if (!normalizedValue) {
-    return null;
-  }
-
-  const hasPracticalHint =
-    normalizedValue.includes('practical') || normalizedValue.includes('lab');
-  const hasFinalHint =
-    normalizedValue.includes('final') ||
-    normalizedValue.includes('written') ||
-    normalizedValue.includes('exam');
-
-  if (hasPracticalHint && hasFinalHint) {
-    return 'PRACTICAL_FINAL' as const;
-  }
-
-  if (hasPracticalHint) {
-    return 'PRACTICAL_CONTINUOUS' as const;
-  }
-
-  if (hasFinalHint) {
-    return 'THEORY_FINAL' as const;
-  }
-
-  return 'THEORY_CONTINUOUS' as const;
-}
-
+/**
+ * Resolves the appropriate bucket for an assessment component based on its title or type.
+ */
 function resolveComponentBucket(
   component: Partial<TAssessmentComponent>,
 ): TAssessmentBucket {
@@ -135,64 +96,75 @@ function resolveComponentBucket(
   }
 
   if (isAssessmentComponentType(component.componentType)) {
-    return bucketByComponentType[component.componentType];
+    return BUCKET_BY_COMPONENT_TYPE[component.componentType];
   }
 
-  return (
-    guessBucketFromText(component.title) ??
-    guessBucketFromText(component.code) ??
-    'THEORY_CONTINUOUS'
-  );
+  const normalizedTitle = component.title?.trim().toLowerCase() || '';
+  const hasPracticalHint =
+    normalizedTitle.includes('practical') || normalizedTitle.includes('lab');
+  const hasFinalHint =
+    normalizedTitle.includes('final') ||
+    normalizedTitle.includes('written') ||
+    normalizedTitle.includes('exam');
+
+  if (hasPracticalHint && hasFinalHint) return 'PRACTICAL_FINAL';
+  if (hasPracticalHint) return 'PRACTICAL_CONTINUOUS';
+  if (hasFinalHint) return 'THEORY_FINAL';
+
+  return 'THEORY_CONTINUOUS';
 }
 
-function normalizeSingleAssessmentComponent(
-  component: Partial<TAssessmentComponent>,
-  index: number,
-): TAssessmentComponent {
-  const bucket = resolveComponentBucket(component);
-  const fallback = fallbackBucketMeta[bucket];
-  const title = component.title?.trim() || `${fallback.title} ${index + 1}`;
-  const code =
-    component.code?.trim() ||
-    `${fallback.codePrefix}_${sanitizeCodeSegment(title) || index + 1}`;
-  const fullMarks = Number(component.fullMarks ?? 0);
-  const order = Number(component.order ?? index + 1);
-
-  return {
-    code,
-    title,
-    bucket,
-    componentType: isAssessmentComponentType(component.componentType)
-      ? component.componentType
-      : fallback.componentType,
-    fullMarks: Number.isFinite(fullMarks) && fullMarks >= 0 ? fullMarks : 0,
-    order: Number.isFinite(order) && order > 0 ? order : index + 1,
-    isRequired: component.isRequired ?? true,
-  };
+/**
+ * Internal helper to normalize assessment components fields without strict bucket total validation.
+ */
+function normalizeComponentsBasic(
+  components: TAssessmentComponent[],
+): TAssessmentComponent[] {
+  return (components || []).map((comp, index) => {
+    const bucket = resolveComponentBucket(comp);
+    return {
+      ...comp,
+      bucket,
+      fullMarks: Number(comp.fullMarks || 0),
+      title: comp.title?.trim() || '',
+      code:
+        comp.code?.trim() ||
+        `${FALLBACK_BUCKET_META[bucket].codePrefix}_${index + 1}`,
+      order: Number(comp.order || index + 1),
+      isRequired: comp.isRequired ?? true,
+    };
+  });
 }
 
-export function normalizeMarkingPayload({
-  markingScheme,
-  assessmentComponents,
-}: TMarkingPayload): TMarkingPayload {
-  const normalizedMarkingScheme: TSubjectMarkingScheme = {
-    theoryContinuous: Number(markingScheme?.theoryContinuous ?? 0),
-    theoryFinal: Number(markingScheme?.theoryFinal ?? 0),
-    practicalContinuous: Number(markingScheme?.practicalContinuous ?? 0),
-    practicalFinal: Number(markingScheme?.practicalFinal ?? 0),
-    totalMarks: Number(markingScheme?.totalMarks ?? 0),
+/**
+ * Normalizes and validates the marking payload for a subject.
+ * Ensures that component totals match scheme bucket totals.
+ */
+export const normalizeMarkingPayload = (payload: {
+  markingScheme: TSubjectMarkingScheme;
+  assessmentComponents: TAssessmentComponent[];
+}) => {
+  const { markingScheme, assessmentComponents } = payload;
+
+  // 1. Basic Type Conversions & Validation
+  const normalizedScheme: TSubjectMarkingScheme = {
+    theoryContinuous: Number(markingScheme.theoryContinuous || 0),
+    theoryFinal: Number(markingScheme.theoryFinal || 0),
+    practicalContinuous: Number(markingScheme.practicalContinuous || 0),
+    practicalFinal: Number(markingScheme.practicalFinal || 0),
+    totalMarks: Number(markingScheme.totalMarks || 0),
   };
 
-  const expectedTotal =
-    normalizedMarkingScheme.theoryContinuous +
-    normalizedMarkingScheme.theoryFinal +
-    normalizedMarkingScheme.practicalContinuous +
-    normalizedMarkingScheme.practicalFinal;
+  const schemeSum =
+    normalizedScheme.theoryContinuous +
+    normalizedScheme.theoryFinal +
+    normalizedScheme.practicalContinuous +
+    normalizedScheme.practicalFinal;
 
-  if (expectedTotal !== normalizedMarkingScheme.totalMarks) {
+  if (schemeSum !== normalizedScheme.totalMarks) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      'Marking scheme total must equal the sum of all assessment buckets.',
+      'Marking scheme total must equal the sum of all buckets.',
     );
   }
 
@@ -203,6 +175,10 @@ export function normalizeMarkingPayload({
     );
   }
 
+  // 2. Normalize Components
+  const normalizedComponents = normalizeComponentsBasic(assessmentComponents);
+
+  // 3. Verify that each bucket total matches the scheme
   const bucketTotals: Record<TAssessmentBucket, number> = {
     THEORY_CONTINUOUS: 0,
     THEORY_FINAL: 0,
@@ -210,152 +186,100 @@ export function normalizeMarkingPayload({
     PRACTICAL_FINAL: 0,
   };
 
-  const usedCodes = new Set<string>();
-
-  const normalizedComponents = assessmentComponents.map((component, index) => {
-    const generatedCode =
-      component.code?.trim() ||
-      `${sanitizeCodeSegment(component.bucket)}_${sanitizeCodeSegment(
-        component.title,
-      )}_${index + 1}`;
-
-    if (usedCodes.has(generatedCode)) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        `Duplicate assessment component code: ${generatedCode}`,
-      );
-    }
-
-    usedCodes.add(generatedCode);
-
-    const normalizedComponent: TAssessmentComponent = {
-      code: generatedCode,
-      title: component.title.trim(),
-      bucket: component.bucket,
-      componentType: component.componentType,
-      fullMarks: Number(component.fullMarks ?? 0),
-      order: Number(component.order ?? index + 1),
-      isRequired: component.isRequired ?? true,
-    };
-
-    bucketTotals[normalizedComponent.bucket] += normalizedComponent.fullMarks;
-
-    return normalizedComponent;
+  normalizedComponents.forEach((comp) => {
+    bucketTotals[comp.bucket] += comp.fullMarks;
   });
 
   for (const [bucket, total] of Object.entries(bucketTotals) as [
     TAssessmentBucket,
     number,
   ][]) {
-    const schemeKey = bucketToSchemeKey[bucket];
-    if (normalizedMarkingScheme[schemeKey] !== total) {
+    const schemeKey = BUCKET_TO_SCHEME_KEY[bucket];
+    if (normalizedScheme[schemeKey] !== total) {
       throw new AppError(
         StatusCodes.BAD_REQUEST,
-        `${bucket} component marks must equal ${schemeKey} in the marking scheme.`,
+        `${bucket.replace(
+          '_',
+          ' ',
+        )} total (${total}) does not match scheme (${
+          normalizedScheme[schemeKey]
+        }).`,
       );
     }
   }
 
   return {
-    markingScheme: normalizedMarkingScheme,
-    assessmentComponents: normalizedComponents,
+    markingScheme: normalizedScheme,
+    assessmentComponents: normalizedComponents.sort(
+      (a, b) => a.order - b.order,
+    ),
   };
-}
+};
 
+/**
+ * Creates plain objects for assessment components, handling Mongoose documents if present.
+ */
 export function cloneAssessmentComponents(
   assessmentComponents: TAssessmentComponent[],
 ) {
   return (assessmentComponents ?? []).map((component) => {
     if (component && typeof component === 'object' && 'toObject' in component) {
-      const plainComponent = (
-        component as TAssessmentComponent & {
-          toObject?: () => TAssessmentComponent;
-        }
-      ).toObject?.();
-
-      if (plainComponent) {
-        return {
-          ...plainComponent,
-        };
-      }
+      return (component as any).toObject();
     }
-
-    return {
-      ...component,
-    };
+    return { ...component };
   });
 }
 
+/**
+ * Creates plain objects for marking scheme, handling Mongoose documents if present.
+ */
 export function cloneMarkingScheme(markingScheme: TSubjectMarkingScheme) {
-  if (markingScheme && typeof markingScheme === 'object' && 'toObject' in markingScheme) {
-    const plainMarkingScheme = (
-      markingScheme as TSubjectMarkingScheme & {
-        toObject?: () => TSubjectMarkingScheme;
-      }
-    ).toObject?.();
-
-    if (plainMarkingScheme) {
-      return {
-        ...plainMarkingScheme,
-      };
-    }
+  if (
+    markingScheme &&
+    typeof markingScheme === 'object' &&
+    'toObject' in markingScheme
+  ) {
+    return (markingScheme as any).toObject();
   }
-
-  return {
-    ...markingScheme,
-  };
+  return { ...markingScheme };
 }
 
+/**
+ * Ensures that all buckets defined in the marking scheme have corresponding assessment components.
+ * Auto-generates missing components if necessary.
+ */
 export function ensureAssessmentComponentsComplete(
   markingScheme: TSubjectMarkingScheme,
   assessmentComponents: TAssessmentComponent[],
 ) {
-  const normalized = cloneAssessmentComponents(assessmentComponents ?? [])
-    .map((component, index) =>
-      normalizeSingleAssessmentComponent(
-        component as Partial<TAssessmentComponent>,
-        index,
-      ),
-    )
-    .sort((left, right) => left.order - right.order);
+  const normalized = normalizeComponentsBasic(
+    cloneAssessmentComponents(
+      assessmentComponents ?? [],
+    ) as TAssessmentComponent[],
+  ).sort((left, right) => left.order - right.order);
+
   const usedCodes = new Set(normalized.map((component) => component.code));
-  let changed = normalized.some((component, index) => {
-    const originalComponent = assessmentComponents?.[index] as
-      | Partial<TAssessmentComponent>
-      | undefined;
-
-    return (
-      component.code !== originalComponent?.code ||
-      component.title !== originalComponent?.title ||
-      component.bucket !== originalComponent?.bucket ||
-      component.componentType !== originalComponent?.componentType ||
-      component.fullMarks !== Number(originalComponent?.fullMarks ?? 0) ||
-      component.order !== Number(originalComponent?.order ?? index + 1) ||
-      component.isRequired !== (originalComponent?.isRequired ?? true)
-    );
-  });
+  let changed = false;
   let nextOrder =
-    normalized.reduce((maxOrder, component) => Math.max(maxOrder, component.order), 0) + 1;
+    normalized.reduce(
+      (maxOrder, component) => Math.max(maxOrder, component.order),
+      0,
+    ) + 1;
 
-  for (const bucket of Object.keys(bucketToSchemeKey) as TAssessmentBucket[]) {
-    const schemeKey = bucketToSchemeKey[bucket];
+  for (const bucket of AssessmentBuckets) {
+    const schemeKey = BUCKET_TO_SCHEME_KEY[bucket];
     const expectedMarks = Number(markingScheme?.[schemeKey] ?? 0);
 
-    if (expectedMarks <= 0) {
-      continue;
-    }
+    if (expectedMarks <= 0) continue;
 
     const currentTotal = normalized
       .filter((component) => component.bucket === bucket)
       .reduce((sum, component) => sum + Number(component.fullMarks ?? 0), 0);
 
-    if (currentTotal >= expectedMarks) {
-      continue;
-    }
+    if (currentTotal >= expectedMarks) continue;
 
     changed = true;
-
-    const fallback = fallbackBucketMeta[bucket];
+    const fallback = FALLBACK_BUCKET_META[bucket];
     const missingMarks = expectedMarks - currentTotal;
     let code = `${fallback.codePrefix}_auto`;
     let suffix = 1;
@@ -368,8 +292,7 @@ export function ensureAssessmentComponentsComplete(
     usedCodes.add(code);
     normalized.push({
       code,
-      title:
-        currentTotal > 0 ? `${fallback.title} Additional` : fallback.title,
+      title: currentTotal > 0 ? `${fallback.title} Additional` : fallback.title,
       bucket,
       componentType: fallback.componentType,
       fullMarks: missingMarks,
@@ -388,6 +311,6 @@ export function ensureAssessmentComponentsComplete(
 
   return {
     assessmentComponents: nextComponents,
-    changed,
+    changed: changed || nextComponents.length !== assessmentComponents?.length,
   };
 }

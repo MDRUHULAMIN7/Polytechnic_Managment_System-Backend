@@ -86,18 +86,19 @@ const updateSubjectIntoDB = async (id: string, payload: Partial<TSubject>) => {
     assessmentComponents,
     ...subjectRemainingData
   } = payload;
+
   const session = await mongoose.startSession();
 
   try {
     session.startTransaction();
 
     const existingSubject = await Subject.findById(id).session(session);
-
     if (!existingSubject) {
       throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found!');
     }
 
-    let normalizedMarkingPayload = null;
+    // 1. Handle Marking Normalization if needed
+    let normalizedMarkingPayload = {};
     if (markingScheme || assessmentComponents) {
       normalizedMarkingPayload = normalizeMarkingPayload({
         markingScheme: markingScheme ?? existingSubject.markingScheme,
@@ -106,13 +107,10 @@ const updateSubjectIntoDB = async (id: string, payload: Partial<TSubject>) => {
       });
     }
 
-    // Step 1: Update main subject fields
+    // 2. Update Basic Subject Data
     const updatedSubject = await Subject.findByIdAndUpdate(
       id,
-      {
-        ...subjectRemainingData,
-        ...(normalizedMarkingPayload ?? {}),
-      },
+      { ...subjectRemainingData, ...normalizedMarkingPayload },
       { new: true, runValidators: true, session },
     );
 
@@ -120,8 +118,8 @@ const updateSubjectIntoDB = async (id: string, payload: Partial<TSubject>) => {
       throw new AppError(StatusCodes.BAD_REQUEST, 'Failed to update subject!');
     }
 
-    // Step 2: Update pre-requisite subjects if provided
-    if (preRequisiteSubjects && preRequisiteSubjects.length > 0) {
+    // 3. Update Pre-requisites efficiently
+    if (preRequisiteSubjects?.length) {
       const deletedPreReqs = preRequisiteSubjects
         .filter((el) => el.subject && el.isDeleted)
         .map((el) => el.subject);
@@ -155,8 +153,7 @@ const updateSubjectIntoDB = async (id: string, payload: Partial<TSubject>) => {
     await session.endSession();
   }
 
-  const result = await Subject.findById(id).populate('preRequisiteSubjects.subject');
-  return result;
+  return Subject.findById(id).populate('preRequisiteSubjects.subject');
 };
 
 // Delete Subject (Soft Delete)
@@ -172,57 +169,26 @@ const assignInstructorsWithSubjectIntoDB = async (
 ) => {
   const instructorIds = payload.instructors || [];
 
-  if (instructorIds.length) {
-    const invalidInstructorIds = instructorIds.filter(
-      (instructorId) => !mongoose.isValidObjectId(instructorId),
-    );
-
-    if (invalidInstructorIds.length) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        `Invalid instructor id(s): ${invalidInstructorIds.join(', ')}`
-      );
+  if (instructorIds.length > 0) {
+    // 1. Validate Subject existence
+    const subjectExists = await Subject.exists({ _id: id });
+    if (!subjectExists) {
+      throw new AppError(StatusCodes.NOT_FOUND, 'Subject not found!');
     }
 
-    const existingInstructors = await Instructor.find({
+    // 2. Validate Instructor IDs format
+    const invalidIds = instructorIds.filter(id => !mongoose.isValidObjectId(id));
+    if (invalidIds.length > 0) {
+      throw new AppError(StatusCodes.BAD_REQUEST, `Invalid instructor ID(s): ${invalidIds.join(', ')}`);
+    }
+
+    // 3. Verify Instructors exist in DB
+    const existingInstructorsCount = await Instructor.countDocuments({
       _id: { $in: instructorIds },
-    }).select('_id');
+    });
 
-    const existingInstructorIdSet = new Set(
-      existingInstructors.map((instructor) => instructor._id.toString()),
-    );
-
-    const missingInstructorIds = instructorIds.filter(
-      (instructorId) =>
-        !existingInstructorIdSet.has(instructorId.toString()),
-    );
-
-    if (missingInstructorIds.length) {
-      throw new AppError(
-        StatusCodes.NOT_FOUND,
-        `Instructors not found : ${missingInstructorIds.join(', ')}`
-      );
-    }
-
-    const existingSubjectInstructor = await SubjectInstructor.findOne({
-      subject: id,
-    }).select('instructors');
-
-    const assignedInstructorIdSet = new Set(
-      (existingSubjectInstructor?.instructors || []).map((instructorId) =>
-        instructorId.toString(),
-      ),
-    );
-
-    const alreadyAssignedInstructorIds = instructorIds.filter((instructorId) =>
-      assignedInstructorIdSet.has(instructorId.toString()),
-    );
-
-    if (alreadyAssignedInstructorIds.length) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `Instructor already assigned for this subject: ${alreadyAssignedInstructorIds.join(', ')}`
-      );
+    if (existingInstructorsCount !== instructorIds.length) {
+      throw new AppError(StatusCodes.NOT_FOUND, 'One or more instructors not found!');
     }
   }
 
@@ -230,10 +196,11 @@ const assignInstructorsWithSubjectIntoDB = async (
     id,
     {
       subject: id,
-      $addToSet: { instructors: { $each: payload.instructors || [] } },
+      $addToSet: { instructors: { $each: instructorIds } },
     },
     { upsert: true, new: true },
   );
+
   return result;
 };
 const getInstructorWithSubjectFromDB = async (subjectId: string) => {
