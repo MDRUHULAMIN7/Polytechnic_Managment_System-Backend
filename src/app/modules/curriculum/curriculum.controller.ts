@@ -16,13 +16,21 @@ const createCurriculum = catchAsync(async (req, res) => {
 
 const getAllCurriculums = catchAsync(async (req, res) => {
   const { role, userId } = req.user ?? {};
-  const result =
-    role === 'student' && userId
-      ? await CurriculumServices.getAllCurriculumsForStudentFromDB(
-          userId as string,
-          req.query,
-        )
-      : await CurriculumServices.getAllCurriculumsFromDB(req.query);
+  let result;
+
+  if (role === 'student' && userId) {
+    result = await CurriculumServices.getAllCurriculumsForStudentFromDB(
+      userId as string,
+      req.query,
+    );
+  } else if (role === 'instructor' && userId) {
+    result = await CurriculumServices.getAllCurriculumsForInstructorFromDB(
+      userId as string,
+      req.query,
+    );
+  } else {
+    result = await CurriculumServices.getAllCurriculumsFromDB(req.query);
+  }
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,
@@ -35,13 +43,21 @@ const getAllCurriculums = catchAsync(async (req, res) => {
 const getSingleCurriculum = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { role, userId } = req.user ?? {};
-  const result =
-    role === 'student' && userId
-      ? await CurriculumServices.getSingleCurriculumForStudentFromDB(
-          id,
-          userId as string,
-        )
-      : await CurriculumServices.getSingleCurriculumFromDB(id);
+  let result;
+
+  if (role === 'student' && userId) {
+    result = await CurriculumServices.getSingleCurriculumForStudentFromDB(
+      id,
+      userId as string,
+    );
+  } else if (role === 'instructor' && userId) {
+    result = await CurriculumServices.getSingleCurriculumForInstructorFromDB(
+      id,
+      userId as string,
+    );
+  } else {
+    result = await CurriculumServices.getSingleCurriculumFromDB(id);
+  }
 
   sendResponse(res, {
     statusCode: StatusCodes.OK,

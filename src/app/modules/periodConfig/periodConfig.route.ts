@@ -9,19 +9,19 @@ const router = express.Router();
 
 router.get(
   '/active',
-  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin, USER_ROLE.student, USER_ROLE.instructor),
   PeriodConfigControllers.getActivePeriodConfig,
 );
 
 router.get(
   '/',
-  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin, USER_ROLE.student, USER_ROLE.instructor),
   PeriodConfigControllers.getAllPeriodConfigs,
 );
 
 router.get(
   '/:id',
-  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin, USER_ROLE.student, USER_ROLE.instructor),
   PeriodConfigControllers.getSinglePeriodConfig,
 );
 

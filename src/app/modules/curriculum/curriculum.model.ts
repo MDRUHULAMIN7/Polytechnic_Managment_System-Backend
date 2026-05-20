@@ -27,10 +27,10 @@ const curriculumSchema = new mongoose.Schema<TCurriculum>(
       required: true,
       trim: true,
     },
-    subjects: [
+    offeredSubjects: [
       {
         type: Schema.Types.ObjectId,
-        ref: 'Subject',
+        ref: 'OfferedSubject',
         required: true,
       },
     ],

@@ -1,1 +1,1 @@
-export const curriculumSearchableFields = ['session'];
+export const curriculumSearchableFields = ['session', 'regulation'];

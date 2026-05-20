@@ -10,7 +10,7 @@ const createCurriculumValidationSchema = z.object({
     semisterRegistration: z.string(),
     regulation: z.number(),
     session: sessionValidationSchema,
-    subjects: z.array(z.string()).min(1, 'At least one subject is required'),
+    offeredSubjects: z.array(z.string()).min(1, 'At least one offered subject is required'),
   }),
 });
 
@@ -22,7 +22,7 @@ const updateCurriculumValidationSchema = z.object({
       semisterRegistration: z.string().optional(),
       regulation: z.number().optional(),
       session: sessionValidationSchema.optional(),
-      subjects: z.array(z.string()).optional(),
+      offeredSubjects: z.array(z.string()).optional(),
       totalCredit: z.number().optional(),
     })
     .refine((value) => Object.keys(value).length > 0, {

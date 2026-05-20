@@ -6,7 +6,7 @@ export interface TCurriculum {
   semisterRegistration: Types.ObjectId;
   regulation: number;
   session: string;
-  subjects: Types.ObjectId[];
+  offeredSubjects: Types.ObjectId[];
   totalCredit: number;
 }
 
@@ -15,5 +15,5 @@ export type TCreateCurriculumPayload = {
   semisterRegistration: Types.ObjectId;
   regulation: number;
   session: string;
-  subjects: Types.ObjectId[];
+  offeredSubjects: Types.ObjectId[];
 };
