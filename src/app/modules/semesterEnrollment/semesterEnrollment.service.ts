@@ -12,202 +12,130 @@ import { SemesterEnrollment } from './semesterEnrollment.model.js';
 import type { TUserRole } from '../user/user.interface.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
 import { buildEnrolledSubjectSeed } from '../enrolledSubject/enrolledSubject.utils.js';
+import { getMissingOfferedSubjectReasons } from './semesterEnrollment.utils.js';
 
-const getMissingOfferedSubjectReasons = async ({
-  subjectIds,
-  semesterRegistration,
-  academicSemester,
-  academicDepartment,
-  academicInstructor,
-}: {
-  subjectIds: string[];
-  semesterRegistration: string;
-  academicSemester: string;
-  academicDepartment: string;
-  academicInstructor: string;
-}) => {
-  const subjectDocs = await Subject.find({
-    _id: { $in: subjectIds },
-  }).select('_id title');
-  const offeredSubjectDocs = await OfferedSubject.find({
-    subject: { $in: subjectIds },
-  }).select(
-    'subject semesterRegistration academicSemester academicDepartment academicInstructor maxCapacity',
-  );
-
-  const subjectTitleMap = new Map(
-    subjectDocs.map((subject) => [subject._id.toString(), subject.title]),
-  );
-  const offeredBySubjectId = new Map<string, (typeof offeredSubjectDocs)>();
-
-  for (const offeredSubjectDoc of offeredSubjectDocs) {
-    const bucket = offeredBySubjectId.get(offeredSubjectDoc.subject.toString()) ?? [];
-    bucket.push(offeredSubjectDoc);
-    offeredBySubjectId.set(offeredSubjectDoc.subject.toString(), bucket);
-  }
-
-  const reasons: string[] = [];
-
-  for (const subjectId of subjectIds) {
-    const subjectLabel = `${subjectTitleMap.get(subjectId) || 'Subject'} (${subjectId})`;
-    const subjectOfferings = offeredBySubjectId.get(subjectId) ?? [];
-    const hasAnyOffered = subjectOfferings.length > 0;
-
-    if (!hasAnyOffered) {
-      reasons.push(`${subjectLabel}: not offered yet`);
-      continue;
-    }
-
-    const hasSameSemester = subjectOfferings.some(
-      (offeredSubjectDoc) =>
-        offeredSubjectDoc.semesterRegistration.toString() === semesterRegistration &&
-        offeredSubjectDoc.academicSemester.toString() === academicSemester,
-    );
-
-    if (!hasSameSemester) {
-      reasons.push(
-        `${subjectLabel}: offered but not in this curriculum semester/registration`,
-      );
-      continue;
-    }
-
-    const hasDepartmentInstructorMatch = subjectOfferings.some(
-      (offeredSubjectDoc) =>
-        offeredSubjectDoc.semesterRegistration.toString() === semesterRegistration &&
-        offeredSubjectDoc.academicSemester.toString() === academicSemester &&
-        offeredSubjectDoc.academicDepartment.toString() === academicDepartment &&
-        offeredSubjectDoc.academicInstructor.toString() === academicInstructor,
-    );
-
-    if (!hasDepartmentInstructorMatch) {
-      reasons.push(
-        `${subjectLabel}: offered but does not match your department/instructor`,
-      );
-      continue;
-    }
-
-    const hasSeat = subjectOfferings.some(
-      (offeredSubjectDoc) =>
-        offeredSubjectDoc.semesterRegistration.toString() === semesterRegistration &&
-        offeredSubjectDoc.academicSemester.toString() === academicSemester &&
-        offeredSubjectDoc.academicDepartment.toString() === academicDepartment &&
-        offeredSubjectDoc.academicInstructor.toString() === academicInstructor &&
-        offeredSubjectDoc.maxCapacity > 0,
-    );
-
-    if (!hasSeat) {
-      reasons.push(`${subjectLabel}: seat full (maxCapacity = 0)`);
-      continue;
-    }
-
-    reasons.push(`${subjectLabel}: offered subject resolution failed`);
-  }
-
-  return reasons;
-};
-
+/**
+ * Creates a new semester enrollment for a student.
+ * Handles complex validation logic: curriculum matching, prerequisite checks, credit limits, and seat capacity.
+ */
 const createSemesterEnrollmentIntoDB = async (
   userId: string,
   payload: TCreateSemesterEnrollmentPayload,
 ) => {
   const { curriculum } = payload;
 
+  // 1. Resolve student and their academic context
   const student = await Student.findOne(
     { id: userId },
     { _id: 1, academicDepartment: 1, academicInstructor: 1 },
   );
 
   if (!student) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
+    throw new AppError(StatusCodes.NOT_FOUND, 'Student record not found!');
   }
 
   if (!student.academicDepartment || !student.academicInstructor) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      'Student department or instructor information is missing !',
+      'Student profile is incomplete: department or instructor info missing.',
     );
   }
 
-  const selectedCurriculum = await Curriculum.findById(curriculum).select(
-    'academicDepartment academicSemester semisterRegistration subjects totalCredit',
-  );
+  // 2. Resolve and validate curriculum
+  const selectedCurriculum = await Curriculum.findById(curriculum)
+    .populate('offeredSubjects')
+    .select(
+      'academicDepartment academicSemester semisterRegistration offeredSubjects totalCredit',
+    );
 
   if (!selectedCurriculum) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Curriculum not found !');
+    throw new AppError(StatusCodes.NOT_FOUND, 'Selected curriculum not found!');
   }
 
-  if (!selectedCurriculum.subjects?.length) {
+  const curriculumOfferedSubjects =
+    (selectedCurriculum.offeredSubjects as unknown as any[]) || [];
+
+  if (!curriculumOfferedSubjects.length) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      'This curriculum has no subjects to enroll !',
+      'This curriculum has no subjects assigned for enrollment.',
     );
   }
 
+  // Department consistency check
   if (
     selectedCurriculum.academicDepartment.toString() !==
     student.academicDepartment.toString()
   ) {
     throw new AppError(
       StatusCodes.FORBIDDEN,
-      'This curriculum does not belong to your department !',
+      'Access Denied: This curriculum belongs to a different department.',
     );
   }
 
+  // 3. Resolve and validate semester registration
   const semesterRegistration = await SemesterRegistration.findById(
     selectedCurriculum.semisterRegistration,
   ).select('status totalCredit academicSemester');
 
   if (!semesterRegistration) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Semester registration not found !');
+    throw new AppError(
+      StatusCodes.NOT_FOUND,
+      'Associated semester registration not found!',
+    );
   }
 
   if (semesterRegistration.status !== 'ONGOING') {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      `Enrollment is allowed only for ONGOING semester registration. Current status is ${semesterRegistration.status}.`,
+      `Enrollment is only allowed for ONGOING registrations. Current status: ${semesterRegistration.status}.`,
     );
   }
 
+  // Matching check
   if (
     semesterRegistration.academicSemester.toString() !==
     selectedCurriculum.academicSemester.toString()
   ) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      'Curriculum and semester registration are not matched !',
+      'Data Inconsistency: Curriculum and semester registration periods do not match.',
     );
   }
 
-  const isStudentAlreadySemesterEnrolled = await SemesterEnrollment.findOne({
+  // 4. Check for existing enrollment
+  const isAlreadyEnrolled = await SemesterEnrollment.exists({
     student: student._id,
     semesterRegistration: selectedCurriculum.semisterRegistration,
-  }).select('_id');
+  });
 
-  if (isStudentAlreadySemesterEnrolled) {
+  if (isAlreadyEnrolled) {
     throw new AppError(
       StatusCodes.CONFLICT,
-      'You are already enrolled for this semester registration !',
+      'You have already submitted an enrollment for this semester.',
     );
   }
 
-  const curriculumSubjectIds = selectedCurriculum.subjects.map((subjectId) =>
-    subjectId.toString(),
+  const curriculumSubjectIds = curriculumOfferedSubjects.map((os: any) =>
+    os.subject.toString(),
   );
 
-  const existingEnrolledSubjects = await EnrolledSubject.find({
+  // Check if any subjects in this curriculum are already enrolled
+  const existingEnrolledSubjects = await EnrolledSubject.exists({
     semesterRegistration: selectedCurriculum.semisterRegistration,
     student: student._id,
     subject: { $in: curriculumSubjectIds },
     isEnrolled: true,
-  }).select('_id');
+  });
 
-  if (existingEnrolledSubjects.length) {
+  if (existingEnrolledSubjects) {
     throw new AppError(
       StatusCodes.CONFLICT,
-      'Student already has enrolled subject(s) from this curriculum !',
+      'Some subjects in this curriculum are already enrolled in your record.',
     );
   }
 
+  // 5. Credit limit validation
   const currentEnrolledCreditAggregation = await EnrolledSubject.aggregate([
     {
       $match: {
@@ -224,9 +152,7 @@ const createSemesterEnrollmentIntoDB = async (
         as: 'enrolledSubjectData',
       },
     },
-    {
-      $unwind: '$enrolledSubjectData',
-    },
+    { $unwind: '$enrolledSubjectData' },
     {
       $group: {
         _id: null,
@@ -235,11 +161,7 @@ const createSemesterEnrollmentIntoDB = async (
     },
   ]);
 
-  const currentEnrolledCredits =
-    currentEnrolledCreditAggregation.length > 0
-      ? currentEnrolledCreditAggregation[0].totalEnrolledCredits
-      : 0;
-
+  const currentEnrolledCredits = currentEnrolledCreditAggregation[0]?.totalEnrolledCredits || 0;
   const semesterCreditLimit = semesterRegistration.totalCredit;
   const curriculumTotalCredit = selectedCurriculum.totalCredit ?? 0;
 
@@ -249,48 +171,47 @@ const createSemesterEnrollmentIntoDB = async (
   ) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      'You have exceeded maximum number of credits !',
+      `Credit Limit Exceeded: Max ${semesterCreditLimit} allowed, current + requested = ${currentEnrolledCredits + curriculumTotalCredit}.`,
     );
   }
 
+  // 6. Prerequisite validation
   const completedSubjects = await EnrolledSubject.find({
     student: student._id,
     isCompleted: true,
   }).select('subject');
 
   const completedSubjectIdSet = new Set(
-    completedSubjects.map((completedSubject) => completedSubject.subject.toString()),
+    completedSubjects.map((sub) => sub.subject.toString()),
   );
 
   const curriculumSubjects = await Subject.find({
     _id: { $in: curriculumSubjectIds },
     isDeleted: { $ne: true },
-  }).select('_id preRequisiteSubjects');
+  }).select('_id preRequisiteSubjects title');
 
   if (curriculumSubjects.length !== curriculumSubjectIds.length) {
     throw new AppError(
       StatusCodes.NOT_FOUND,
-      'One or more curriculum subjects were not found !',
+      'One or more subjects in the curriculum could not be found.',
     );
   }
 
-  const prerequisiteNotFulfilledSubjectIds = curriculumSubjects
-    .filter((curriculumSubject) =>
-      (curriculumSubject.preRequisiteSubjects || []).some(
-        (preRequisiteSubject) =>
-          !preRequisiteSubject.isDeleted &&
-          !completedSubjectIdSet.has(preRequisiteSubject.subject.toString()),
-      ),
-    )
-    .map((curriculumSubject) => curriculumSubject._id.toString());
+  const blockedSubjects = curriculumSubjects.filter((sub) =>
+    (sub.preRequisiteSubjects || []).some(
+      (pre) => !pre.isDeleted && !completedSubjectIdSet.has(pre.subject.toString()),
+    ),
+  );
 
-  if (prerequisiteNotFulfilledSubjectIds.length) {
+  if (blockedSubjects.length) {
+    const blockedLabels = blockedSubjects.map((s) => s.title).join(', ');
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      `Prerequisites are not fulfilled for subject(s): ${prerequisiteNotFulfilledSubjectIds.join(', ')}`,
+      `Prerequisite requirements not met for: ${blockedLabels}`,
     );
   }
 
+  // 7. Resolve Offered Subjects and check capacity
   const offeredSubjects = await OfferedSubject.find({
     semesterRegistration: selectedCurriculum.semisterRegistration,
     academicSemester: selectedCurriculum.academicSemester,
@@ -300,21 +221,21 @@ const createSemesterEnrollmentIntoDB = async (
     maxCapacity: { $gt: 0 },
   }).sort({ createdAt: 1 });
 
-  const offeredSubjectBySubjectId = new Map<string, (typeof offeredSubjects)[number]>();
-  for (const offeredSubject of offeredSubjects) {
-    const subjectId = offeredSubject.subject.toString();
+  const offeredSubjectBySubjectId = new Map<string, any>();
+  for (const offered of offeredSubjects as any[]) {
+    const subjectId = offered.subject.toString();
     if (!offeredSubjectBySubjectId.has(subjectId)) {
-      offeredSubjectBySubjectId.set(subjectId, offeredSubject);
+      offeredSubjectBySubjectId.set(subjectId, offered);
     }
   }
 
-  const missingOfferedSubjectIds = curriculumSubjectIds.filter(
-    (subjectId) => !offeredSubjectBySubjectId.has(subjectId),
+  const missingOfferings = curriculumSubjectIds.filter(
+    (id) => !offeredSubjectBySubjectId.has(id),
   );
 
-  if (missingOfferedSubjectIds.length) {
-    const reasonDetails = await getMissingOfferedSubjectReasons({
-      subjectIds: missingOfferedSubjectIds,
+  if (missingOfferings.length) {
+    const reasons = await getMissingOfferedSubjectReasons({
+      subjectIds: missingOfferings,
       semesterRegistration: selectedCurriculum.semisterRegistration.toString(),
       academicSemester: selectedCurriculum.academicSemester.toString(),
       academicDepartment: student.academicDepartment.toString(),
@@ -322,14 +243,15 @@ const createSemesterEnrollmentIntoDB = async (
     });
     throw new AppError(
       StatusCodes.NOT_FOUND,
-      `Some curriculum subjects can not be enrolled:\n${reasonDetails.join('\n')}`,
+      `Enrollment blocked by offering issues:\n${reasons.join('\n')}`,
     );
   }
 
   const selectedOfferedSubjects = curriculumSubjectIds.map(
-    (subjectId) => offeredSubjectBySubjectId.get(subjectId)!,
+    (id) => offeredSubjectBySubjectId.get(id)!,
   );
 
+  // 8. Execute Enrollment with Transaction
   const session = await mongoose.startSession();
 
   try {
@@ -352,18 +274,14 @@ const createSemesterEnrollmentIntoDB = async (
     );
 
     if (!semesterEnrollment) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        'Failed to create semester enrollment !',
-      );
+      throw new AppError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to create enrollment record.');
     }
 
-    const enrolledSubjectPayload = selectedOfferedSubjects.map(
-      (offeredSubjectItem) =>
-        buildEnrolledSubjectSeed({
-          offeredSubject: offeredSubjectItem,
-          student: student._id,
-        }),
+    const enrolledSubjectPayload = selectedOfferedSubjects.map((offered: any) =>
+      buildEnrolledSubjectSeed({
+        offeredSubject: offered,
+        student: student._id,
+      }),
     );
 
     const enrolledSubjects = await EnrolledSubject.insertMany(enrolledSubjectPayload, {
@@ -371,32 +289,23 @@ const createSemesterEnrollmentIntoDB = async (
     });
 
     if (!enrolledSubjects.length) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        'Failed to auto enroll curriculum subjects !',
-      );
+      throw new AppError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to register curriculum subjects.');
     }
 
-    const capacityUpdates = selectedOfferedSubjects.map((offeredSubjectItem) => ({
+    // Atomic capacity reduction
+    const capacityUpdates = selectedOfferedSubjects.map((offered: any) => ({
       updateOne: {
-        filter: {
-          _id: offeredSubjectItem._id,
-          maxCapacity: { $gt: 0 },
-        },
-        update: {
-          $inc: { maxCapacity: -1 },
-        },
+        filter: { _id: offered._id, maxCapacity: { $gt: 0 } },
+        update: { $inc: { maxCapacity: -1 } },
       },
     }));
 
-    const capacityUpdateResult = await OfferedSubject.bulkWrite(capacityUpdates, {
-      session,
-    });
+    const capacityResult = await OfferedSubject.bulkWrite(capacityUpdates, { session });
 
-    if (capacityUpdateResult.modifiedCount !== selectedOfferedSubjects.length) {
+    if (capacityResult.modifiedCount !== selectedOfferedSubjects.length) {
       throw new AppError(
         StatusCodes.CONFLICT,
-        'One or more subjects became full during enrollment. Please try again !',
+        'One or more subjects became full during enrollment. Please refresh and try again.',
       );
     }
 
@@ -406,28 +315,18 @@ const createSemesterEnrollmentIntoDB = async (
       semesterEnrollment,
       enrolledSubjects,
     };
-  } catch (error: unknown) {
+  } catch (error: any) {
     await session.abortTransaction();
 
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === 11000
-    ) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        'You are already enrolled for this semester registration !',
-      );
+    if (error.code === 11000) {
+      throw new AppError(StatusCodes.CONFLICT, 'You have already enrolled for this semester.');
     }
 
-    if (error instanceof AppError) {
-      throw error;
-    }
-
+    if (error instanceof AppError) throw error;
+    
     throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      'Failed to create semester enrollment !',
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      error.message || 'Enrollment failed due to an internal error.',
     );
   } finally {
     await session.endSession();
@@ -438,19 +337,16 @@ const getMySemesterEnrollmentsFromDB = async (userId: string) => {
   const student = await Student.findOne({ id: userId }, { _id: 1 });
 
   if (!student) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
+    throw new AppError(StatusCodes.NOT_FOUND, 'Student profile not found!');
   }
 
-  const result = await SemesterEnrollment.find({
-    student: student._id,
-  })
+  return await SemesterEnrollment.find({ student: student._id })
     .populate('curriculum', 'session regulation totalCredit')
     .populate('semesterRegistration', 'status shift startDate endDate')
     .populate('academicSemester', 'name year startMonth')
     .populate('academicDepartment', 'name')
-    .sort('-createdAt');
-
-  return result;
+    .sort('-createdAt')
+    .lean();
 };
 
 const getSemesterEnrollmentsForStudentFromDB = async (
@@ -460,10 +356,10 @@ const getSemesterEnrollmentsForStudentFromDB = async (
   const student = await Student.findOne({ id: userId }, { _id: 1 });
 
   if (!student) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
+    throw new AppError(StatusCodes.NOT_FOUND, 'Student profile not found!');
   }
 
-  const semesterEnrollmentQuery = new QueryBuilder(
+  const enrollmentQuery = new QueryBuilder(
     SemesterEnrollment.find({ student: student._id })
       .populate('student', 'id name')
       .populate('curriculum', 'session regulation totalCredit')
@@ -478,13 +374,10 @@ const getSemesterEnrollmentsForStudentFromDB = async (
     .paginate()
     .fields();
 
-  const result = await semesterEnrollmentQuery.modelQuery;
-  const meta = await semesterEnrollmentQuery.countTotal();
+  const result = await enrollmentQuery.modelQuery;
+  const meta = await enrollmentQuery.countTotal();
 
-  return {
-    meta,
-    result,
-  };
+  return { meta, result };
 };
 
 const getSingleSemesterEnrollmentFromDB = async (
@@ -492,34 +385,33 @@ const getSingleSemesterEnrollmentFromDB = async (
   role: TUserRole,
   userId: string,
 ) => {
-  const query = SemesterEnrollment.findById(id)
+  const baseQuery = SemesterEnrollment.findById(id)
     .populate('student', 'id name')
     .populate('curriculum', 'session regulation totalCredit')
     .populate('semesterRegistration', 'status shift startDate endDate')
     .populate('academicSemester', 'name year startMonth')
-    .populate('academicDepartment', 'name');
+    .populate('academicDepartment', 'name')
+    .lean();
 
   if (role === 'student') {
     const student = await Student.findOne({ id: userId }, { _id: 1 });
-
     if (!student) {
-      throw new AppError(StatusCodes.NOT_FOUND, 'Student not found !');
+      throw new AppError(StatusCodes.NOT_FOUND, 'Student record not found!');
     }
-
-    query.where({ student: student._id });
+    baseQuery.where({ student: student._id });
   }
 
-  const result = await query;
+  const result = await baseQuery;
 
   if (!result) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'Semester enrollment not found !');
+    throw new AppError(StatusCodes.NOT_FOUND, 'Semester enrollment details not found!');
   }
 
   return result;
 };
 
 const getAllSemesterEnrollmentsFromDB = async (query: Record<string, unknown>) => {
-  const semesterEnrollmentQuery = new QueryBuilder(
+  const enrollmentQuery = new QueryBuilder(
     SemesterEnrollment.find()
       .populate('student', 'id name')
       .populate('curriculum', 'session regulation totalCredit')
@@ -534,13 +426,10 @@ const getAllSemesterEnrollmentsFromDB = async (query: Record<string, unknown>) =
     .paginate()
     .fields();
 
-  const result = await semesterEnrollmentQuery.modelQuery;
-  const meta = await semesterEnrollmentQuery.countTotal();
+  const result = await enrollmentQuery.modelQuery;
+  const meta = await enrollmentQuery.countTotal();
 
-  return {
-    meta,
-    result,
-  };
+  return { meta, result };
 };
 
 export const SemesterEnrollmentServices = {

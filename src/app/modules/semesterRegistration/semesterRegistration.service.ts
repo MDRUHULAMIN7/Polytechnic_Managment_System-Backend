@@ -5,93 +5,14 @@ import type { TSemesterRegistration } from './semesterRegistration.interface.js'
 import { SemesterRegistration } from './semesterRegistration.model.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
 import { AcademicSemester } from '../academicSemester/academicSemesterModel.js';
-import { Months } from '../academicSemester/academicSemester.constant.js';
-import type { TMonths } from '../academicSemester/academicSemester.interface.js';
 import mongoose from 'mongoose';
 import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
+import { validateRegistrationTimelineAgainstSemester } from './semesterRegistration.utils.js';
 
-const monthToIndexMap = new Map(Months.map((month, index) => [month, index]));
-
-const parseDateOrThrow = (value: Date | string, fieldName: string) => {
-  const parsedDate = new Date(value);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      `${fieldName} must be a valid date`,
-    );
-  }
-
-  return parsedDate;
-};
-
-const getSemesterDurationWindow = (academicSemester: {
-  year: string;
-  startMonth: TMonths;
-  endMonth: TMonths;
-}) => {
-  const semesterYear = Number(academicSemester.year);
-
-  if (!Number.isInteger(semesterYear)) {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      `Academic semester year is invalid: ${academicSemester.year}`,
-    );
-  }
-
-  const startMonthIndex = monthToIndexMap.get(academicSemester.startMonth);
-  const endMonthIndex = monthToIndexMap.get(academicSemester.endMonth);
-
-  if (startMonthIndex === undefined || endMonthIndex === undefined) {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      'Academic semester month range is invalid',
-    );
-  }
-
-  const endYear =
-    endMonthIndex >= startMonthIndex ? semesterYear : semesterYear + 1;
-
-  const durationStart = new Date(semesterYear, startMonthIndex, 1, 0, 0, 0, 0);
-  const durationEnd = new Date(endYear, endMonthIndex + 1, 0, 23, 59, 59, 999);
-
-  return { durationStart, durationEnd, endYear };
-};
-
-const validateRegistrationTimelineAgainstSemester = (params: {
-  academicSemester: { year: string; startMonth: TMonths; endMonth: TMonths };
-  startDateValue: Date | string;
-  endDateValue: Date | string;
-}) => {
-  const { academicSemester, startDateValue, endDateValue } = params;
-
-  const startDate = parseDateOrThrow(startDateValue, 'startDate');
-  const endDate = parseDateOrThrow(endDateValue, 'endDate');
-
-  if (endDate <= startDate) {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      'End date must be later than start date',
-    );
-  }
-
-  const { durationStart, durationEnd, endYear } =
-    getSemesterDurationWindow(academicSemester);
-
-  const isOutsideSemesterWindow =
-    startDate < durationStart ||
-    startDate > durationEnd ||
-    endDate < durationStart ||
-    endDate > durationEnd;
-
-  if (isOutsideSemesterWindow) {
-    throw new AppError(
-      StatusCodes.BAD_REQUEST,
-      `Registration timeline must stay within ${academicSemester.startMonth} ${academicSemester.year} to ${academicSemester.endMonth} ${endYear}`,
-    );
-  }
-};
-
+/**
+ * Creates a new semester registration in the database.
+ * Focuses on business logic: duplicate active registration prevention and timeline validation.
+ */
 const createSemesterRegistrationIntoDB = async (
   payload: TSemesterRegistration,
 ) => {
@@ -107,6 +28,8 @@ const createSemesterRegistrationIntoDB = async (
       'This academic semester not found!',
     );
   }
+
+  // Step 2: Validate registration timeline against semester window
   validateRegistrationTimelineAgainstSemester({
     academicSemester: {
       year: academicSemesterExists.year,
@@ -117,11 +40,11 @@ const createSemesterRegistrationIntoDB = async (
     endDateValue: payload.endDate,
   });
 
-  // Step 2: Check if this specific academicSemester + shift combination is already registered with 'UPCOMING' or 'ONGOING' status
+  // Step 3: Check if this specific academicSemester + shift combination already has an active registration
   const isDuplicateActiveRegistration = await SemesterRegistration.findOne({
     academicSemester,
     shift,
-    $or: [{ status: 'UPCOMING' }, { status: 'ONGOING' }],
+    status: { $in: [RegistrationStatus.UPCOMING, RegistrationStatus.ONGOING] },
   });
 
   if (isDuplicateActiveRegistration) {
@@ -131,11 +54,14 @@ const createSemesterRegistrationIntoDB = async (
     );
   }
 
-  // Step 3: Create the semester registration
+  // Step 4: Create the semester registration
   const result = await SemesterRegistration.create(payload);
   return result;
 };
 
+/**
+ * Retrieves all semester registrations with filtering, searching, and pagination.
+ */
 const getAllSemesterRegistrationsFromDB = async (
   query: Record<string, unknown>,
 ) => {
@@ -144,6 +70,7 @@ const getAllSemesterRegistrationsFromDB = async (
 
   let baseQuery = SemesterRegistration.find();
 
+  // Search logic for semester registrations
   if (searchTerm) {
     const semesterMatches = await AcademicSemester.find({
       $or: [
@@ -179,295 +106,161 @@ const getAllSemesterRegistrationsFromDB = async (
 
   const result = await semesterRegistrationQuery.modelQuery;
   const meta = await semesterRegistrationQuery.countTotal();
+
   return {
     meta,
     result,
   };
 };
 
+/**
+ * Retrieves a single semester registration by ID.
+ */
 const getSingleSemesterRegistrationsFromDB = async (id: string) => {
   const result =
     await SemesterRegistration.findById(id).populate('academicSemester');
 
+  if (!result) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Semester registration not found!');
+  }
+
   return result;
 };
 
+/**
+ * Updates an existing semester registration.
+ * Handles status transition logic, duplicate prevention, and timeline validation.
+ */
 const updateSemesterRegistrationIntoDB = async (
   id: string,
   payload: Partial<TSemesterRegistration>,
 ) => {
-  // Step 1: Check if the requested registered semester exists
-  const existingSemesterRegistration = await SemesterRegistration.findById(id);
+  const existingRegistration = await SemesterRegistration.findById(id);
 
-  if (!existingSemesterRegistration) {
-    throw new AppError(StatusCodes.NOT_FOUND, 'This semester is not found!');
+  if (!existingRegistration) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'This semester registration is not found!');
   }
 
-  const currentSemesterStatus = existingSemesterRegistration?.status;
-  const currentAcademicSemester =
-    existingSemesterRegistration?.academicSemester;
-  const currentShift = existingSemesterRegistration?.shift;
-  const requestedStatus = payload?.status;
-  let semesterForTimelineValidation: {
-    year: string;
-    startMonth: TMonths;
-    endMonth: TMonths;
-  } | null = null;
+  const currentStatus = existingRegistration.status;
+  const requestedStatus = payload.status;
 
-  // Step 2: If the current semester registration is 'ENDED', we will not update anything
-  if (currentSemesterStatus === RegistrationStatus.ENDED) {
+  // 1. Immutable 'ENDED' status check
+  if (currentStatus === RegistrationStatus.ENDED) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      `This semester is already ${currentSemesterStatus}`,
+      `This registration has already ended and cannot be updated.`,
     );
   }
 
-  // Step 5: Validate status transition flow: UPCOMING --> ONGOING --> ENDED
-  if (requestedStatus) {
+  // 2. Status transition flow validation
+  if (requestedStatus && requestedStatus !== currentStatus) {
     // Cannot skip from UPCOMING to ENDED
     if (
-      currentSemesterStatus === RegistrationStatus.UPCOMING &&
+      currentStatus === RegistrationStatus.UPCOMING &&
       requestedStatus === RegistrationStatus.ENDED
     ) {
       throw new AppError(
         StatusCodes.BAD_REQUEST,
-        `You cannot directly change status from ${currentSemesterStatus} to ${requestedStatus}`,
+        `Cannot change status directly from UPCOMING to ENDED.`,
       );
     }
 
     // Cannot go backward from ONGOING to UPCOMING
     if (
-      currentSemesterStatus === RegistrationStatus.ONGOING &&
+      currentStatus === RegistrationStatus.ONGOING &&
       requestedStatus === RegistrationStatus.UPCOMING
     ) {
       throw new AppError(
         StatusCodes.BAD_REQUEST,
-        `You cannot change status from ${currentSemesterStatus} to ${requestedStatus}`,
+        `Cannot change status from ONGOING back to UPCOMING.`,
       );
     }
   }
 
-  // Step 4: If status is 'ONGOING', only allow updating status to 'ENDED'
-  if (currentSemesterStatus === RegistrationStatus.ONGOING) {
-    // Check if user is trying to update anything other than status
-    if (requestedStatus && requestedStatus === RegistrationStatus.ENDED) {
-      // Allow ONLY status update to ENDED, no other fields
+  // 3. 'ONGOING' status constraints
+  if (currentStatus === RegistrationStatus.ONGOING) {
+    if (requestedStatus === RegistrationStatus.ENDED) {
+      // Only status update is allowed when moving from ONGOING to ENDED
       const allowedKeys = ['status'];
-      const payloadKeys = Object.keys(payload);
-
-      // Check if there are any keys other than 'status' in the payload
-      const hasOtherFields = payloadKeys.some(
+      const hasForbiddenFields = Object.keys(payload).some(
         (key) => !allowedKeys.includes(key),
       );
 
-      if (hasOtherFields) {
+      if (hasForbiddenFields) {
         throw new AppError(
           StatusCodes.BAD_REQUEST,
-          `When semester is ${currentSemesterStatus}, you can only update status to ENDED without any other data`,
+          `Only status can be updated to ENDED when the current status is ONGOING.`,
         );
       }
-    } else {
-      // If not trying to update status to ENDED, reject all updates
+    } else if (requestedStatus && requestedStatus !== currentStatus) {
       throw new AppError(
         StatusCodes.BAD_REQUEST,
-        `You can only update status to ENDED when semester is ${currentSemesterStatus}`,
+        `Invalid status transition from ONGOING.`,
+      );
+    } else {
+        // If status is not changing, and it's already ongoing, we don't allow other field updates usually
+        // based on original logic.
+        throw new AppError(
+            StatusCodes.BAD_REQUEST,
+            `Cannot update fields other than status when registration is ONGOING.`,
+          );
+    }
+  }
+
+  // 4. Duplicate prevention logic
+  const nextAcademicSemester = payload.academicSemester ?? existingRegistration.academicSemester;
+  const nextShift = payload.shift ?? existingRegistration.shift;
+  const nextStatus = requestedStatus ?? currentStatus;
+
+  // If changing to an active status, ensure no other active registration exists for this semester/shift
+  if (nextStatus === RegistrationStatus.UPCOMING || nextStatus === RegistrationStatus.ONGOING) {
+    const duplicateActive = await SemesterRegistration.findOne({
+      academicSemester: nextAcademicSemester,
+      shift: nextShift,
+      status: { $in: [RegistrationStatus.UPCOMING, RegistrationStatus.ONGOING] },
+      _id: { $ne: id },
+    });
+
+    if (duplicateActive) {
+      throw new AppError(
+        StatusCodes.CONFLICT,
+        `An active registration (${duplicateActive.status}) already exists for this semester and shift!`,
       );
     }
   }
 
-  // Check for duplicate semester registration (academicSemester + status + shift)
-  // Only check when these fields are actually being changed
+  // General uniqueness check for resulting combination
+  const duplicateExact = await SemesterRegistration.findOne({
+    academicSemester: nextAcademicSemester,
+    shift: nextShift,
+    status: nextStatus,
+    _id: { $ne: id },
+  });
 
-  // Check 1: If academicSemester is being changed
-  if (
-    payload.academicSemester &&
-    payload.academicSemester.toString() !== currentAcademicSemester.toString()
-  ) {
-    // Verify academic semester exists
-    const academicSemesterExists = await AcademicSemester.findById(
-      payload.academicSemester,
+  if (duplicateExact) {
+    throw new AppError(
+      StatusCodes.CONFLICT,
+      `A semester registration with this combination already exists!`,
     );
-    if (!academicSemesterExists) {
-      throw new AppError(StatusCodes.NOT_FOUND, 'Academic semester not found!');
-    }
-    semesterForTimelineValidation = {
-      year: academicSemesterExists.year,
-      startMonth: academicSemesterExists.startMonth,
-      endMonth: academicSemesterExists.endMonth,
-    };
-
-    // Check for duplicate with new academicSemester + current status + current shift
-    const duplicateWithNewAcademicSemester = await SemesterRegistration.findOne(
-      {
-        academicSemester: payload.academicSemester,
-        status: currentSemesterStatus,
-        shift: currentShift,
-        _id: { $ne: id },
-      },
-    );
-
-    if (duplicateWithNewAcademicSemester) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `A ${currentSemesterStatus.toLowerCase()} semester registration with ${currentShift} shift already exists for this academic semester!`,
-      );
-    }
   }
 
-  // Check 2: If status is being changed
-  if (payload.status && payload.status !== currentSemesterStatus) {
-    // Check for duplicate with current academicSemester + new status + current shift
-    const duplicateWithNewStatus = await SemesterRegistration.findOne({
-      academicSemester: currentAcademicSemester,
-      status: payload.status,
-      shift: currentShift,
-      _id: { $ne: id },
-    });
-
-    if (duplicateWithNewStatus) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `A semester registration with ${payload.status.toLowerCase()} status already exists for this academic semester and ${currentShift} shift!`,
-      );
-    }
-  }
-
-  // Check 3: If shift is being changed
-  if (payload.shift && payload.shift !== currentShift) {
-    // Check for duplicate with current academicSemester + current status + new shift
-    const duplicateWithNewShift = await SemesterRegistration.findOne({
-      academicSemester: currentAcademicSemester,
-      status: currentSemesterStatus,
-      shift: payload.shift,
-      _id: { $ne: id },
-    });
-
-    if (duplicateWithNewShift) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `A ${currentSemesterStatus.toLowerCase()} semester registration with ${payload.shift} shift already exists for this academic semester!`,
-      );
-    }
-  }
-
-  // Check 4: If both status and shift are being changed
-  if (
-    payload.status &&
-    payload.status !== currentSemesterStatus &&
-    payload.shift &&
-    payload.shift !== currentShift
-  ) {
-    const duplicateWithNewStatusAndShift = await SemesterRegistration.findOne({
-      academicSemester: currentAcademicSemester,
-      status: payload.status,
-      shift: payload.shift,
-      _id: { $ne: id },
-    });
-
-    if (duplicateWithNewStatusAndShift) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `A semester registration with ${payload.status.toLowerCase()} status and ${payload.shift} shift already exists for this academic semester!`,
-      );
-    }
-  }
-
-  // Check 5: If both academicSemester and shift are being changed
-  if (
-    payload.academicSemester &&
-    payload.academicSemester.toString() !==
-      currentAcademicSemester.toString() &&
-    payload.shift &&
-    payload.shift !== currentShift
-  ) {
-    const duplicateWithNewAcademicSemesterAndShift =
-      await SemesterRegistration.findOne({
-        academicSemester: payload.academicSemester,
-        status: currentSemesterStatus,
-        shift: payload.shift,
-        _id: { $ne: id },
-      });
-
-    if (duplicateWithNewAcademicSemesterAndShift) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `A ${currentSemesterStatus.toLowerCase()} semester registration with ${payload.shift} shift already exists for this academic semester!`,
-      );
-    }
-  }
-
-  // Check 6: If both academicSemester and status are being changed
-  if (
-    payload.academicSemester &&
-    payload.academicSemester.toString() !==
-      currentAcademicSemester.toString() &&
-    payload.status &&
-    payload.status !== currentSemesterStatus
-  ) {
-    const duplicateWithNewAcademicSemesterAndStatus =
-      await SemesterRegistration.findOne({
-        academicSemester: payload.academicSemester,
-        status: payload.status,
-        shift: currentShift,
-        _id: { $ne: id },
-      });
-
-    if (duplicateWithNewAcademicSemesterAndStatus) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `A semester registration with ${payload.status.toLowerCase()} status and ${currentShift} shift already exists for this academic semester!`,
-      );
-    }
-  }
-
-  // Check 7: If all three are being changed
-  if (
-    payload.academicSemester &&
-    payload.academicSemester.toString() !==
-      currentAcademicSemester.toString() &&
-    payload.status &&
-    payload.status !== currentSemesterStatus &&
-    payload.shift &&
-    payload.shift !== currentShift
-  ) {
-    const duplicateWithAllChanges = await SemesterRegistration.findOne({
-      academicSemester: payload.academicSemester,
-      status: payload.status,
-      shift: payload.shift,
-      _id: { $ne: id },
-    });
-
-    if (duplicateWithAllChanges) {
-      throw new AppError(
-        StatusCodes.CONFLICT,
-        `A semester registration with this academic semester, ${payload.status.toLowerCase()} status and ${payload.shift} shift already exists!`,
-      );
-    }
-  }
-  if (!semesterForTimelineValidation) {
-    const currentAcademicSemesterDoc = await AcademicSemester.findById(
-      currentAcademicSemester,
-    ).select('year startMonth endMonth');
-
-    if (!currentAcademicSemesterDoc) {
-      throw new AppError(StatusCodes.NOT_FOUND, 'Academic semester not found!');
-    }
-
-    semesterForTimelineValidation = {
-      year: currentAcademicSemesterDoc.year,
-      startMonth: currentAcademicSemesterDoc.startMonth,
-      endMonth: currentAcademicSemesterDoc.endMonth,
-    };
+  // 5. Timeline validation
+  const semesterDoc = await AcademicSemester.findById(nextAcademicSemester);
+  if (!semesterDoc) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Academic semester not found!');
   }
 
   validateRegistrationTimelineAgainstSemester({
-    academicSemester: semesterForTimelineValidation,
-    startDateValue: payload.startDate ?? existingSemesterRegistration.startDate,
-    endDateValue: payload.endDate ?? existingSemesterRegistration.endDate,
+    academicSemester: {
+      year: semesterDoc.year,
+      startMonth: semesterDoc.startMonth,
+      endMonth: semesterDoc.endMonth,
+    },
+    startDateValue: payload.startDate ?? existingRegistration.startDate,
+    endDateValue: payload.endDate ?? existingRegistration.endDate,
   });
 
-  // Step 3: If status is 'UPCOMING', allow all updates
-
+  // 6. Execute update
   const result = await SemesterRegistration.findByIdAndUpdate(id, payload, {
     new: true,
     runValidators: true,
@@ -476,77 +269,54 @@ const updateSemesterRegistrationIntoDB = async (
   return result;
 };
 
+/**
+ * Deletes a semester registration and all associated offered subjects.
+ * Only allowed for 'UPCOMING' registrations.
+ */
 const deleteSemesterRegistrationFromDB = async (id: string) => {
-  /** 
-  * Step1: Delete associated offered Subjects.
-  * Step2: Delete semester registraton when the status is 
-  'UPCOMING'.
-  **/
+  const existingRegistration = await SemesterRegistration.findById(id);
 
-  // checking if the semester registration is exist
-  const isSemesterRegistrationExists = await SemesterRegistration.findById(id);
-
-  if (!isSemesterRegistrationExists) {
-    throw new AppError(
-      StatusCodes.NOT_FOUND,
-      'This registered semester is not found !',
-    );
+  if (!existingRegistration) {
+    throw new AppError(StatusCodes.NOT_FOUND, 'Semester registration not found!');
   }
 
-  // checking if the status is still "UPCOMING"
-  const semesterRegistrationStatus = isSemesterRegistrationExists.status;
-
-  if (semesterRegistrationStatus !== 'UPCOMING') {
+  if (existingRegistration.status !== RegistrationStatus.UPCOMING) {
     throw new AppError(
       StatusCodes.BAD_REQUEST,
-      `You can not delete as the registered semester is ${semesterRegistrationStatus}`,
+      `Cannot delete a registration that is ${existingRegistration.status}. Only UPCOMING registrations can be deleted.`,
     );
   }
 
   const session = await mongoose.startSession();
 
-  //deleting associated offered Subjects
-
   try {
     session.startTransaction();
 
-    const deletedOfferedSubject = await OfferedSubject.deleteMany(
-      {
-        semesterRegistration: id,
-      },
-      {
-        session,
-      },
+    // Delete associated offered subjects first
+    await OfferedSubject.deleteMany(
+      { semesterRegistration: id },
+      { session },
     );
 
-    if (!deletedOfferedSubject) {
+    // Delete the registration itself
+    const deletedRegistration = await SemesterRegistration.findByIdAndDelete(id, {
+      session,
+    });
+
+    if (!deletedRegistration) {
       throw new AppError(
         StatusCodes.BAD_REQUEST,
-        'Failed to delete semester registration !',
-      );
-    }
-
-    const deletedSemisterRegistration =
-      await SemesterRegistration.findByIdAndDelete(id, {
-        session,
-        new: true,
-      });
-
-    if (!deletedSemisterRegistration) {
-      throw new AppError(
-        StatusCodes.BAD_REQUEST,
-        'Failed to delete semester registration !',
+        'Failed to delete semester registration.',
       );
     }
 
     await session.commitTransaction();
-    await session.endSession();
-
     return null;
   } catch (err: any) {
     await session.abortTransaction();
+    throw new AppError(StatusCodes.INTERNAL_SERVER_ERROR, err.message || 'Failed to delete semester registration.');
+  } finally {
     await session.endSession();
-    throw new Error(err);
   }
 };
 
