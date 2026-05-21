@@ -174,6 +174,11 @@ const studentSchema = new Schema<TStudent, StudentModel, StudentMethods>(
       type: Schema.Types.ObjectId,
       ref: 'AcademicInstructor',
     },
+    group: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     isDeleted: {
       type: Boolean,
       default: false,

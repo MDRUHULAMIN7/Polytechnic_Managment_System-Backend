@@ -112,6 +112,23 @@ const completeClassSession = catchAsync(async (req, res) => {
   });
 });
 
+const getClassSessionRescheduleAvailability = catchAsync(async (req, res) => {
+  const rawDate = req.query.date;
+  const date = typeof rawDate === 'string' ? rawDate.trim() : '';
+
+  const result = await ClassSessionServices.getClassSessionRescheduleAvailabilityFromDB(
+    req.params.id,
+    date,
+  );
+
+  sendResponse(res, {
+    statusCode: StatusCodes.OK,
+    success: true,
+    message: 'Class reschedule availability retrieved successfully',
+    data: result,
+  });
+});
+
 const rescheduleClassSession = catchAsync(async (req, res) => {
   const result = await ClassSessionServices.rescheduleClassSessionIntoDB(
     req.params.id,
@@ -207,6 +224,7 @@ export const ClassSessionControllers = {
   getInstructorClassSessionDetails,
   startClassSession,
   completeClassSession,
+  getClassSessionRescheduleAvailability,
   rescheduleClassSession,
   cancelClassSession,
   getStudentClassSessionDetails,

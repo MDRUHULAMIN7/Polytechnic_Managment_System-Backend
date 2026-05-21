@@ -92,6 +92,7 @@ const createStudentZodValidationSchema =z.object({
   profileImg: z.string().optional(),
   admissionSemester: z.string(),
   academicDepartment: z.string(),
+  group: z.string().optional().nullable(),
   })
 })
 });
@@ -138,6 +139,7 @@ export const updateStudentValidationSchema = z.object({
       admissionSemester: z.string().optional(),
       profileImg: z.string().optional(),
       academicDepartment: z.string().optional(),
+      group: z.string().optional().nullable(),
     }),
   }),
 });

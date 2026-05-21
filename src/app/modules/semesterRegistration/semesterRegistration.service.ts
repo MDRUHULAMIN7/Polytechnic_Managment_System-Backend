@@ -16,7 +16,7 @@ import { validateRegistrationTimelineAgainstSemester } from './semesterRegistrat
 const createSemesterRegistrationIntoDB = async (
   payload: TSemesterRegistration,
 ) => {
-  const { academicSemester, shift } = payload;
+  const { academicSemester, shift, group } = payload;
 
   // Step 1: Check if the academic semester exists
   const academicSemesterExists =
@@ -40,17 +40,19 @@ const createSemesterRegistrationIntoDB = async (
     endDateValue: payload.endDate,
   });
 
-  // Step 3: Check if this specific academicSemester + shift combination already has an active registration
+  // Step 3: Check if this specific academicSemester + shift + group combination already has an active registration
   const isDuplicateActiveRegistration = await SemesterRegistration.findOne({
     academicSemester,
     shift,
+    group: group || null,
     status: { $in: [RegistrationStatus.UPCOMING, RegistrationStatus.ONGOING] },
   });
 
   if (isDuplicateActiveRegistration) {
+    const groupLabel = group ? ` Group ${group}` : '';
     throw new AppError(
       StatusCodes.CONFLICT,
-      `This semester is already registered for ${shift} shift with status ${isDuplicateActiveRegistration.status}!`,
+      `This semester is already registered for ${shift} shift${groupLabel} with status ${isDuplicateActiveRegistration.status}!`,
     );
   }
 
@@ -86,6 +88,7 @@ const getAllSemesterRegistrationsFromDB = async (
     const orConditions: Record<string, unknown>[] = [
       { status: { $regex: searchTerm, $options: 'i' } },
       { shift: { $regex: searchTerm, $options: 'i' } },
+      { group: { $regex: searchTerm, $options: 'i' } },
     ];
 
     if (semesterIds.length > 0) {
@@ -210,21 +213,24 @@ const updateSemesterRegistrationIntoDB = async (
   // 4. Duplicate prevention logic
   const nextAcademicSemester = payload.academicSemester ?? existingRegistration.academicSemester;
   const nextShift = payload.shift ?? existingRegistration.shift;
+  const nextGroup = payload.group !== undefined ? payload.group : existingRegistration.group;
   const nextStatus = requestedStatus ?? currentStatus;
 
-  // If changing to an active status, ensure no other active registration exists for this semester/shift
+  // If changing to an active status, ensure no other active registration exists for this semester/shift/group
   if (nextStatus === RegistrationStatus.UPCOMING || nextStatus === RegistrationStatus.ONGOING) {
     const duplicateActive = await SemesterRegistration.findOne({
       academicSemester: nextAcademicSemester,
       shift: nextShift,
+      group: nextGroup || null,
       status: { $in: [RegistrationStatus.UPCOMING, RegistrationStatus.ONGOING] },
       _id: { $ne: id },
     });
 
     if (duplicateActive) {
+      const groupLabel = nextGroup ? ` Group ${nextGroup}` : '';
       throw new AppError(
         StatusCodes.CONFLICT,
-        `An active registration (${duplicateActive.status}) already exists for this semester and shift!`,
+        `An active registration (${duplicateActive.status}) already exists for this semester, shift${groupLabel}!`,
       );
     }
   }
@@ -233,6 +239,7 @@ const updateSemesterRegistrationIntoDB = async (
   const duplicateExact = await SemesterRegistration.findOne({
     academicSemester: nextAcademicSemester,
     shift: nextShift,
+    group: nextGroup || null,
     status: nextStatus,
     _id: { $ne: id },
   });

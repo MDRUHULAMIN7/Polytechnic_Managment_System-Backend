@@ -38,6 +38,7 @@ export type TStudent ={
     admissionSemester:Types.ObjectId;
     academicDepartment:Types.ObjectId;
     academicInstructor:Types.ObjectId;
+    group?:string;
     isDeleted:boolean
 }
 

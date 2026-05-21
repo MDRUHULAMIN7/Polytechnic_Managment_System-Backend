@@ -6,6 +6,7 @@ const createSemesterRegistrationValidationSchema = z.object({
     academicSemester: z.string(),
     status: z.enum([...(SemesterRegistrationStatus as [string, ...string[]])]),
     shift: z.enum([...(SemesterRegistrationShift as [string, ...string[]])]),
+    group: z.string().optional().nullable(),
     startDate: z.string().datetime(),
     endDate: z.string().datetime(),
     totalCredit: z.number()
@@ -21,6 +22,7 @@ const upadateSemesterRegistrationValidationSchema = z.object({
     shift: z
       .enum([...(SemesterRegistrationShift as [string, ...string[]])])
       .optional(),
+    group: z.string().optional().nullable(),
     startDate: z.string().datetime().optional(),
     endDate: z.string().datetime().optional(),
     totalCredit: z.number().optional()

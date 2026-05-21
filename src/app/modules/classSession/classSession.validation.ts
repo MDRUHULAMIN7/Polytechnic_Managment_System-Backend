@@ -18,8 +18,8 @@ const startClassSessionValidationSchema = z.object({
 const rescheduleClassSessionValidationSchema = z.object({
   body: z.object({
     date: z.string().trim().min(1),
-    startTime: z.string().trim().min(1),
-    endTime: z.string().trim().min(1),
+    startPeriod: z.number().int().min(1),
+    room: z.string().trim().min(1),
   }),
 });
 

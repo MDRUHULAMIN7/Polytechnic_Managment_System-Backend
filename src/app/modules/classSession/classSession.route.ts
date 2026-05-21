@@ -73,6 +73,12 @@ router.patch(
   ClassSessionControllers.completeClassSession,
 );
 
+router.get(
+  '/:id/reschedule-availability',
+  auth(USER_ROLE.admin, USER_ROLE.superAdmin),
+  ClassSessionControllers.getClassSessionRescheduleAvailability,
+);
+
 router.patch(
   '/:id/reschedule',
   auth(USER_ROLE.admin, USER_ROLE.superAdmin),

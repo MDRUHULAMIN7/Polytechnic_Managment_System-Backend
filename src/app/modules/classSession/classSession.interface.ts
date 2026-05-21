@@ -46,8 +46,81 @@ export type TClassSession = {
 export type TSyncClassSessionResult = {
   offeredSubjectId: string;
   generatedCount: number;
+  updatedCount: number;
   skippedCount: number;
   totalStudents: number;
+  processedMonths: number;
+};
+
+export type TClassSessionRescheduleRoomOption = {
+  _id: string;
+  roomName: string;
+  roomNumber: number;
+  buildingNumber: number;
+  capacity: number;
+  roomType: 'theory' | 'practical' | 'both';
+};
+
+export type TClassSessionRescheduleSlotOption = {
+  startPeriod: number;
+  periodCount: number;
+  periodNumbers: number[];
+  startTime: string;
+  endTime: string;
+  isInstructorAvailable: boolean;
+  instructorConflictMessage: string | null;
+  availableRooms: TClassSessionRescheduleRoomOption[];
+  isCurrentRoomAvailable: boolean;
+  isValid: boolean;
+  blockingReason: string | null;
+  /** Curriculum-level conflict info */
+  curriculumConflict: {
+    hasConflict: boolean;
+    conflictingSubjects: string[];
+    message: string;
+  } | null;
+};
+
+export type TClassSessionRescheduleAvailability = {
+  classSessionId: string;
+  date: string;
+  day: TDays;
+  shift: 'MORNING' | 'DAY';
+  classType?: TOfferedSubjectClassType;
+  requiredPeriodCount: number;
+  totalStudents: number;
+  currentRoomId: string | null;
+  currentStartPeriod: number | null;
+  currentPeriodNumbers: number[];
+  periods: Array<{
+    periodNo: number;
+    title?: string;
+    startTime: string;
+    endTime: string;
+    durationMinutes: number;
+  }>;
+  slots: TClassSessionRescheduleSlotOption[];
+  /** Comprehensive validation information for the target date */
+  validationInfo: {
+    hasSameSubjectDuplicate: boolean;
+    duplicateMessage: string | null;
+    hasCurriculumConflict: boolean;
+    curriculumConflictSubjects: string[];
+    chronoSequenceCheck: {
+      isValid: boolean;
+      reason: string | null;
+      nextClassDate: string | null;
+    };
+  };
+};
+
+export type TCurriculumClassScheduleStatus = {
+  hasSessions: boolean;
+  totalSessions: number;
+  totalOfferedSubjects: number;
+  canSchedule: boolean;
+  registrationStatus: string | null;
+  blockingReason: string | null;
 };
 export type TPopulatedStudent = {
   _id: { toString(): string };

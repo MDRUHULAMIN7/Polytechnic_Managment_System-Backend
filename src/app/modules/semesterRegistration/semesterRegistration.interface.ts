@@ -4,6 +4,7 @@ export type TSemesterRegistration = {
   academicSemester: Types.ObjectId;
   status: 'UPCOMING' | 'ONGOING' | 'ENDED';
   shift: 'MORNING' | 'DAY';
+  group?: string;
   startDate: Date;
   endDate: Date;
   totalCredit: number;

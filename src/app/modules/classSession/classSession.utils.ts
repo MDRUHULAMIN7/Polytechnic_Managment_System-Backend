@@ -6,13 +6,19 @@ import type {
   TOfferedSubjectClassType,
   TScheduleBlock,
 } from '../OfferedSubject/OfferedSubject.interface.js';
+import { timeToMinutes } from '../OfferedSubject/OfferedSubject.constant.js';
 import { Student } from '../student/student.model.js';
-import type { TClassSession, TFilterOption, TSemesterRegistrationOptionSource } from './classSession.interface.js';
+import type {
+  TClassSession,
+  TFilterOption,
+  TSemesterRegistrationOptionSource,
+} from './classSession.interface.js';
 import { ClassSession } from './classSession.model.js';
 import { Subject } from '../subject/subject.model.js';
 import { SemesterRegistration } from '../semesterRegistration/semesterRegistration.model.js';
 import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
 import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
+import type { Types } from 'mongoose';
 
 const dayByWeekIndex: Record<number, TDays> = {
   0: 'Sun',
@@ -37,6 +43,54 @@ export const normalizeUtcDate = (value: Date | string) => {
 
 export const formatUtcDateKey = (date: Date) => {
   return normalizeUtcDate(date).toISOString().slice(0, 10);
+};
+
+export const isSameUtcDate = (left: Date | string, right: Date | string) =>
+  formatUtcDateKey(new Date(left)) === formatUtcDateKey(new Date(right));
+
+export const getTodayUtc = () => normalizeUtcDate(new Date());
+
+export const isBeforeTodayUtc = (value: Date | string) =>
+  normalizeUtcDate(value).getTime() < getTodayUtc().getTime();
+
+export const buildUtcMonthRanges = (start: Date | string, end: Date | string) => {
+  const normalizedStart = normalizeUtcDate(start);
+  const normalizedEnd = normalizeUtcDate(end);
+  const ranges: Array<{ start: Date; end: Date }> = [];
+
+  let cursor = new Date(
+    Date.UTC(
+      normalizedStart.getUTCFullYear(),
+      normalizedStart.getUTCMonth(),
+      1,
+    ),
+  );
+
+  while (cursor.getTime() <= normalizedEnd.getTime()) {
+    const monthStart = new Date(cursor);
+    const monthEnd = new Date(
+      Date.UTC(
+        cursor.getUTCFullYear(),
+        cursor.getUTCMonth() + 1,
+        0,
+      ),
+    );
+
+    ranges.push({
+      start:
+        monthStart.getTime() < normalizedStart.getTime()
+          ? normalizedStart
+          : monthStart,
+      end:
+        monthEnd.getTime() > normalizedEnd.getTime() ? normalizedEnd : monthEnd,
+    });
+
+    cursor = new Date(
+      Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1),
+    );
+  }
+
+  return ranges;
 };
 
 export const resolveInstructorIdFromUserId = async (userId: string) => {
@@ -207,6 +261,155 @@ export const countEnrolledStudentsForOfferedSubject = async (offeredSubjectId: s
   });
 };
 
+type TClassSessionSeedContext = {
+  offeredSubject: Pick<
+    TClassSession,
+    | 'semesterRegistration'
+    | 'academicSemester'
+    | 'academicDepartment'
+    | 'subject'
+    | 'instructor'
+  > & {
+    _id: Types.ObjectId;
+    scheduleBlocks?: TScheduleBlock[];
+    days?: TDays[];
+    startTime?: string;
+    endTime?: string;
+  };
+  semesterRegistration: {
+    startDate: Date;
+    endDate: Date;
+  };
+  totalStudents: number;
+};
+
+const resolveClassSessionScheduleBlocks = (
+  offeredSubject: TClassSessionSeedContext['offeredSubject'],
+) => {
+  const scheduleBlocks: Array<{
+    day: TDays;
+    room?: TScheduleBlock['room'];
+    classType?: TOfferedSubjectClassType;
+    startPeriod?: number;
+    periodCount?: number;
+    periodNumbers?: number[];
+    startTimeSnapshot: string;
+    endTimeSnapshot: string;
+  }> = offeredSubject.scheduleBlocks?.length
+    ? offeredSubject.scheduleBlocks.map((block) => ({
+        day: block.day,
+        room: block.room,
+        classType: block.classType,
+        startPeriod: block.startPeriod,
+        periodCount: block.periodCount,
+        periodNumbers: block.periodNumbers,
+        startTimeSnapshot: block.startTimeSnapshot,
+        endTimeSnapshot: block.endTimeSnapshot,
+      }))
+    : (offeredSubject.days ?? []).map((day) => ({
+        day,
+        startTimeSnapshot: offeredSubject.startTime ?? '',
+        endTimeSnapshot: offeredSubject.endTime ?? '',
+      }));
+
+  return scheduleBlocks.sort((left, right) => {
+    if (left.day !== right.day) {
+      return left.day.localeCompare(right.day);
+    }
+
+    return (
+      timeToMinutes(left.startTimeSnapshot) -
+      timeToMinutes(right.startTimeSnapshot)
+    );
+  });
+};
+
+export const buildClassSessionSeedsForRange = (
+  context: TClassSessionSeedContext,
+  options: {
+    rangeStart: Date;
+    rangeEnd: Date;
+    materializeFrom: Date;
+    nextSessionNumber?: number;
+  },
+) => {
+  const semesterStart = normalizeUtcDate(context.semesterRegistration.startDate);
+  const semesterEnd = normalizeUtcDate(context.semesterRegistration.endDate);
+  const rangeStart = normalizeUtcDate(options.rangeStart);
+  const rangeEnd = normalizeUtcDate(options.rangeEnd);
+  const materializeFrom = normalizeUtcDate(options.materializeFrom);
+  const resolvedScheduleBlocks = resolveClassSessionScheduleBlocks(
+    context.offeredSubject,
+  );
+
+  if (!resolvedScheduleBlocks.length) {
+    return {
+      sessions: [] as Array<Partial<TClassSession>>,
+      nextSessionNumber: options.nextSessionNumber ?? 1,
+    };
+  }
+
+  const effectiveStart =
+    rangeStart.getTime() < semesterStart.getTime() ? semesterStart : rangeStart;
+  const effectiveEnd =
+    rangeEnd.getTime() > semesterEnd.getTime() ? semesterEnd : rangeEnd;
+
+  if (effectiveStart.getTime() > effectiveEnd.getTime()) {
+    return {
+      sessions: [] as Array<Partial<TClassSession>>,
+      nextSessionNumber: options.nextSessionNumber ?? 1,
+    };
+  }
+
+  const sessions: Array<Partial<TClassSession>> = [];
+  let sessionNumber = options.nextSessionNumber ?? 1;
+  let current = new Date(effectiveStart);
+
+  while (current.getTime() <= effectiveEnd.getTime()) {
+    const date = normalizeUtcDate(current);
+    const day = getUtcDayLabel(date);
+    const matchedBlocks = resolvedScheduleBlocks.filter((block) => block.day === day);
+
+    for (const block of matchedBlocks) {
+      if (date.getTime() >= materializeFrom.getTime()) {
+        sessions.push({
+          offeredSubject: context.offeredSubject._id,
+          semesterRegistration: context.offeredSubject.semesterRegistration,
+          academicSemester: context.offeredSubject.academicSemester,
+          academicDepartment: context.offeredSubject.academicDepartment,
+          subject: context.offeredSubject.subject,
+          instructor: context.offeredSubject.instructor,
+          room: block.room,
+          classType: block.classType,
+          sessionNumber,
+          date,
+          day,
+          startPeriod: block.startPeriod,
+          periodCount: block.periodCount,
+          periodNumbers: block.periodNumbers ?? [],
+          startTime: block.startTimeSnapshot,
+          endTime: block.endTimeSnapshot,
+          totalStudents: context.totalStudents,
+          presentCount: 0,
+          absentCount: 0,
+          leaveCount: 0,
+          status: 'SCHEDULED',
+        });
+      }
+
+      sessionNumber += 1;
+    }
+
+    current = new Date(date);
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return {
+    sessions,
+    nextSessionNumber: sessionNumber,
+  };
+};
+
 export const buildClassSessionSeeds = async (
   offeredSubjectId: string,
 ): Promise<Array<Partial<TClassSession>>> => {
@@ -230,88 +433,40 @@ export const buildClassSessionSeeds = async (
   const totalStudents = await countEnrolledStudentsForOfferedSubject(
     offeredSubjectId,
   );
-  const startDate = normalizeUtcDate(semesterRegistration.startDate);
-  const endDate = normalizeUtcDate(semesterRegistration.endDate);
-  const sessions: Array<Partial<TClassSession>> = [];
 
-  const resolvedScheduleBlocks: Array<{
-    day: TDays;
-    room?: TScheduleBlock['room'];
-    classType?: TOfferedSubjectClassType;
-    startPeriod?: number;
-    periodCount?: number;
-    periodNumbers?: number[];
-    startTimeSnapshot: string;
-    endTimeSnapshot: string;
-  }> = offeredSubject.scheduleBlocks?.length
-    ? offeredSubject.scheduleBlocks.map((block) => ({
-        day: block.day,
-        room: block.room,
-        classType: block.classType,
-        startPeriod: block.startPeriod,
-        periodCount: block.periodCount,
-        periodNumbers: block.periodNumbers,
-        startTimeSnapshot: block.startTimeSnapshot,
-        endTimeSnapshot: block.endTimeSnapshot,
-      }))
-    : (offeredSubject.days ?? []).map((day) => ({
-        day,
-        startTimeSnapshot: offeredSubject.startTime,
-        endTimeSnapshot: offeredSubject.endTime,
-      }));
-
-  if (!resolvedScheduleBlocks.length) {
-    return [];
-  }
-
-  let current = new Date(startDate);
-
-  while (current.getTime() <= endDate.getTime()) {
-    const day = getUtcDayLabel(current);
-
-    resolvedScheduleBlocks
-      .filter((block) => block.day === day)
-      .forEach((block) => {
-        sessions.push({
-          offeredSubject: offeredSubject._id,
-          semesterRegistration: offeredSubject.semesterRegistration,
-          academicSemester: offeredSubject.academicSemester,
-          academicDepartment: offeredSubject.academicDepartment,
-          subject: offeredSubject.subject,
-          instructor: offeredSubject.instructor,
-          room: block.room,
-          classType: block.classType,
-          date: new Date(current),
-          day,
-          startPeriod: block.startPeriod,
-          periodCount: block.periodCount,
-          periodNumbers: block.periodNumbers ?? [],
-          startTime: block.startTimeSnapshot,
-          endTime: block.endTimeSnapshot,
-          totalStudents,
-          presentCount: 0,
-          absentCount: 0,
-          leaveCount: 0,
-          status: 'SCHEDULED',
-        });
-      });
-
-    current = new Date(current);
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-
-  return sessions
-    .sort((left, right) => {
-      const leftDate = new Date(left.date as Date).getTime();
-      const rightDate = new Date(right.date as Date).getTime();
-      if (leftDate !== rightDate) {
-        return leftDate - rightDate;
-      }
-
-      return String(left.startTime ?? '').localeCompare(String(right.startTime ?? ''));
-    })
-    .map((session, index) => ({
-      ...session,
-      sessionNumber: index + 1,
-    }));
+  return buildClassSessionSeedsForRange(
+    {
+      offeredSubject: {
+        _id: offeredSubject._id,
+        semesterRegistration: offeredSubject.semesterRegistration,
+        academicSemester: offeredSubject.academicSemester,
+        academicDepartment: offeredSubject.academicDepartment,
+        subject: offeredSubject.subject,
+        instructor: offeredSubject.instructor,
+        scheduleBlocks: offeredSubject.scheduleBlocks,
+        days: offeredSubject.days,
+        startTime: offeredSubject.startTime,
+        endTime: offeredSubject.endTime,
+      },
+      semesterRegistration: {
+        startDate: semesterRegistration.startDate,
+        endDate: semesterRegistration.endDate,
+      },
+      totalStudents,
+    },
+    {
+      rangeStart: semesterRegistration.startDate,
+      rangeEnd: semesterRegistration.endDate,
+      materializeFrom: semesterRegistration.startDate,
+    },
+  ).sessions;
 };
+
+export const doClockTimesOverlap = (
+  firstStart: string,
+  firstEnd: string,
+  secondStart: string,
+  secondEnd: string,
+) =>
+  timeToMinutes(firstStart) < timeToMinutes(secondEnd) &&
+  timeToMinutes(firstEnd) > timeToMinutes(secondStart);

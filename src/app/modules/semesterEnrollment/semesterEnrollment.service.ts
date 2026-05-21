@@ -8,11 +8,14 @@ import { SemesterRegistration } from '../semesterRegistration/semesterRegistrati
 import EnrolledSubject from '../enrolledSubject/enrolledSubject.model.js';
 import { Subject } from '../subject/subject.model.js';
 import { OfferedSubject } from '../OfferedSubject/OfferedSubject.model.js';
+import type { TOfferedSubject } from '../OfferedSubject/OfferedSubject.interface.js';
 import { SemesterEnrollment } from './semesterEnrollment.model.js';
 import type { TUserRole } from '../user/user.interface.js';
 import QueryBuilder from '../../../builder/QueryBuilder.js';
 import { buildEnrolledSubjectSeed } from '../enrolledSubject/enrolledSubject.utils.js';
 import { getMissingOfferedSubjectReasons } from './semesterEnrollment.utils.js';
+
+type TOfferedSubjectDocument = mongoose.HydratedDocument<TOfferedSubject>;
 
 /**
  * Creates a new semester enrollment for a student.
@@ -27,7 +30,7 @@ const createSemesterEnrollmentIntoDB = async (
   // 1. Resolve student and their academic context
   const student = await Student.findOne(
     { id: userId },
-    { _id: 1, academicDepartment: 1, academicInstructor: 1 },
+    { _id: 1, academicDepartment: 1, academicInstructor: 1, group: 1 },
   );
 
   if (!student) {
@@ -53,7 +56,7 @@ const createSemesterEnrollmentIntoDB = async (
   }
 
   const curriculumOfferedSubjects =
-    (selectedCurriculum.offeredSubjects as unknown as any[]) || [];
+    (selectedCurriculum.offeredSubjects as unknown as TOfferedSubject[]) || [];
 
   if (!curriculumOfferedSubjects.length) {
     throw new AppError(
@@ -76,12 +79,21 @@ const createSemesterEnrollmentIntoDB = async (
   // 3. Resolve and validate semester registration
   const semesterRegistration = await SemesterRegistration.findById(
     selectedCurriculum.semisterRegistration,
-  ).select('status totalCredit academicSemester');
+  ).select('status totalCredit academicSemester group');
 
   if (!semesterRegistration) {
     throw new AppError(
       StatusCodes.NOT_FOUND,
       'Associated semester registration not found!',
+    );
+  }
+
+  // Group consistency check: If registration has a group, student must belong to it.
+  // If registration has NO group (null), it's open for all.
+  if (semesterRegistration.group && semesterRegistration.group !== student.group) {
+    throw new AppError(
+      StatusCodes.FORBIDDEN,
+      `Access Denied: This registration is reserved for Group ${semesterRegistration.group}. Your group: ${student.group || 'None'}.`,
     );
   }
 
@@ -116,7 +128,7 @@ const createSemesterEnrollmentIntoDB = async (
     );
   }
 
-  const curriculumSubjectIds = curriculumOfferedSubjects.map((os: any) =>
+  const curriculumSubjectIds = curriculumOfferedSubjects.map((os) =>
     os.subject.toString(),
   );
 
@@ -221,8 +233,8 @@ const createSemesterEnrollmentIntoDB = async (
     maxCapacity: { $gt: 0 },
   }).sort({ createdAt: 1 });
 
-  const offeredSubjectBySubjectId = new Map<string, any>();
-  for (const offered of offeredSubjects as any[]) {
+  const offeredSubjectBySubjectId = new Map<string, TOfferedSubjectDocument>();
+  for (const offered of offeredSubjects) {
     const subjectId = offered.subject.toString();
     if (!offeredSubjectBySubjectId.has(subjectId)) {
       offeredSubjectBySubjectId.set(subjectId, offered);
@@ -277,7 +289,7 @@ const createSemesterEnrollmentIntoDB = async (
       throw new AppError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to create enrollment record.');
     }
 
-    const enrolledSubjectPayload = selectedOfferedSubjects.map((offered: any) =>
+    const enrolledSubjectPayload = selectedOfferedSubjects.map((offered) =>
       buildEnrolledSubjectSeed({
         offeredSubject: offered,
         student: student._id,
@@ -293,7 +305,7 @@ const createSemesterEnrollmentIntoDB = async (
     }
 
     // Atomic capacity reduction
-    const capacityUpdates = selectedOfferedSubjects.map((offered: any) => ({
+    const capacityUpdates = selectedOfferedSubjects.map((offered) => ({
       updateOne: {
         filter: { _id: offered._id, maxCapacity: { $gt: 0 } },
         update: { $inc: { maxCapacity: -1 } },

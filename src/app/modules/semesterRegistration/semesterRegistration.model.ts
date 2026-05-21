@@ -20,6 +20,11 @@ const semesterRegistrationSchema = new mongoose.Schema<TSemesterRegistration>(
       enum: SemesterRegistrationShift,
       required: true
     },
+    group: {
+      type: String,
+      trim: true,
+      default: null
+    },
     startDate: {
       type: Date,
       required: true,
