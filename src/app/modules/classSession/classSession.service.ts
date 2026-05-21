@@ -50,27 +50,18 @@ const buildSessionIdentityKey = (payload: {
 
 const getOfferedSubjectIdsForCurriculum = async (curriculumId: string) => {
   const curriculum = await Curriculum.findById(curriculumId).select(
-    'academicDepartment academicSemester semisterRegistration subjects',
+    'academicDepartment academicSemester semisterRegistration offeredSubjects',
   );
 
   if (!curriculum) {
     throw new AppError(StatusCodes.NOT_FOUND, 'Curriculum not found !');
   }
 
-  const subjectIds = curriculum.subjects.map((subjectId) => subjectId.toString());
+  const offeredSubjectIds = (curriculum.offeredSubjects || []).map((id: any) =>
+    id.toString(),
+  );
 
-  if (!subjectIds.length) {
-    return [];
-  }
-
-  const offeredSubjects = await OfferedSubject.find({
-    academicDepartment: curriculum.academicDepartment,
-    academicSemester: curriculum.academicSemester,
-    semesterRegistration: curriculum.semisterRegistration,
-    subject: { $in: subjectIds },
-  }).select('_id');
-
-  return offeredSubjects.map((item) => item._id.toString());
+  return offeredSubjectIds;
 };
 
 const syncSingleOfferedSubjectClassSessionsIntoDB = async (
