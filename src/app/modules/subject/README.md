@@ -1,64 +1,55 @@
-# Subject Module
+# Backend Documentation: Subject Module
 
-## Overview
-The Subject module is a core component of the Polytechnic Management System (PMS). It manages the curriculum data, including subject details, marking schemes, assessment components, and instructor assignments. This module serves as the foundation for academic planning, marks entry, and result generation.
+## Feature Overview
+The Subject module manages academic subjects, marking schemes, assessment structure, and instructor bindings. It is the core metadata service for curriculum planning, grade entry, and subject assignment.
 
 ## Purpose
-- Maintain a centralized repository of all subjects offered by the polytechnic.
-- Define flexible marking schemes (Theory/Practical) and detailed assessment components (CT, Attendance, Viva, etc.).
-- Manage pre-requisite relationships between subjects.
-- Handle instructor assignments to specific subjects.
+- Author and maintain subject metadata.
+- Define and enforce marking schemes and assessment components.
+- Track prerequisite subject relationships.
+- Manage instructor-subject assignments.
 
-## Business Logic
-### 1. Marking Scheme Normalization
-The system ensures that the sum of all individual assessment components matches the total marks defined in the official marking scheme buckets:
-- **THEORY_CONTINUOUS**
-- **THEORY_FINAL**
-- **PRACTICAL_CONTINUOUS**
-- **PRACTICAL_FINAL**
+## Business Rules
+- Subjects must have valid codes, prefixes, and credit values.
+- Marking scheme buckets must sum to the total expected marks.
+- Prerequisite subjects cannot reference the parent subject.
+- Assigned instructors must exist and not be duplicated.
+- Soft deletes preserve historical subject references for past records.
 
-### 2. Instructor Assignment
-- Only valid instructors can be assigned to a subject.
-- Prevents duplicate assignments using `$addToSet`.
-- Supports bulk assignment and individual removal.
+## Validation Architecture
+### Request Validation
+`subject.validation.ts` uses `zod` schemas to validate payload shapes before controller execution.
 
-### 3. Subject Integrity
-- Supports soft delete (`isDeleted: true`) to preserve historical data in results and registrations.
-- Validates pre-requisite subjects to ensure they exist and are not the subject itself.
+### Business Validation
+Service methods enforce integrity rules such as:
+- Marking bucket totals
+- Prerequisite existence and uniqueness
+- Instructor assignment deduplication
 
----
+### Separation of Concerns
+- Validation schemas handle format and required fields.
+- Service layer handles persistence and cross-document business rules.
+- Utility functions normalize incoming subject payloads.
 
-## Schema Design
-
-### Subject Model
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `title` | String | Full name of the subject. |
-| `prefix` | String | Department/Category prefix (e.g., CSE). |
-| `code` | Number | Unique numeric code. |
-| `credits` | Number | Academic credits (e.g., 3.0). |
-| `subjectType` | Enum | THEORY, THEORY_PRACTICAL, PRACTICAL_ONLY, etc. |
-| `markingScheme` | Object | Nested totals for theory and practical buckets. |
-| `assessmentComponents` | Array | List of specific items for marks entry. |
-| `preRequisiteSubjects` | Array | References to other Subject IDs. |
-
----
+## Schema Relationships
+- `Subject` is the primary metadata document.
+- `SubjectInstructor` links subjects to instructors.
+- `OfferedSubject` and `Curriculum` consume the subject metadata for schedule planning.
+- Soft deletes (`isDeleted`) preserve historical integrity across registrations and results.
 
 ## API Design
-
 ### Endpoints
-
 | Method | Endpoint | Description | Access |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/api/v1/subjects/create-subject` | Create a new subject. | Admin, SuperAdmin |
-| `GET` | `/api/v1/subjects/` | List all subjects (supports pagination/search). | All Roles |
-| `GET` | `/api/v1/subjects/:id` | Get details of a single subject. | All Roles |
-| `PATCH` | `/api/v1/subjects/:id` | Update subject details. | Admin, SuperAdmin |
-| `DELETE` | `/api/v1/subjects/:id` | Soft delete a subject. | Admin, SuperAdmin |
-| `PUT` | `/api/v1/subjects/:subjectId/assign-instructors` | Assign instructors. | Admin, SuperAdmin |
-| `DELETE` | `/api/v1/subjects/:subjectId/remove-instructors` | Remove assigned instructors. | Admin, SuperAdmin |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/subjects/create-subject` | Create a new subject | Admin, SuperAdmin |
+| `GET` | `/api/v1/subjects/` | List subjects with filtering, search, and pagination | All Roles |
+| `GET` | `/api/v1/subjects/:id` | Get subject details | All Roles |
+| `PATCH` | `/api/v1/subjects/:id` | Update a subject | Admin, SuperAdmin |
+| `DELETE` | `/api/v1/subjects/:id` | Soft delete a subject | Admin, SuperAdmin |
+| `PUT` | `/api/v1/subjects/:subjectId/assign-instructors` | Assign instructors | Admin, SuperAdmin |
+| `DELETE` | `/api/v1/subjects/:subjectId/remove-instructors` | Remove instructors | Admin, SuperAdmin |
 
-### Request Payload Example (Create Subject)
+## Request Example: Create Subject
 ```json
 {
   "title": "Data Structures",
@@ -83,14 +74,42 @@ The system ensures that the sum of all individual assessment components matches 
 }
 ```
 
-### Error Responses
-- `400 Bad Request`: Validation failure (e.g., component totals don't match bucket total).
-- `404 Not Found`: Subject or Instructor ID does not exist.
-- `409 Conflict`: Instructor already assigned to the subject.
+## Response Example
+```json
+{
+  "id": "64f5a4f2d227d9b3ae4b9877",
+  "title": "Data Structures",
+  "prefix": "CSE",
+  "code": 2101,
+  "credits": 3,
+  "subjectType": "THEORY_PRACTICAL",
+  "markingScheme": {
+    "theoryContinuous": 40,
+    "theoryFinal": 60,
+    "practicalContinuous": 25,
+    "practicalFinal": 25,
+    "totalMarks": 150
+  }
+}
+```
 
----
+## Error Handling
+- `400 Bad Request` for invalid payload shape or mismatched marking totals.
+- `404 Not Found` for missing subject or instructor references.
+- `409 Conflict` for duplicate instructor assignment or invalid business state.
 
-## Technical Notes
-- **Transactions**: Subject updates use MongoDB sessions/transactions to ensure atomicity when updating basic info and pre-requisites simultaneously.
-- **Normalization**: The `subject.marking.ts` utility handles automatic cleanup and normalization of payloads before they hit the database.
-- **QueryBuilder**: The list endpoint uses a custom `QueryBuilder` for advanced filtering, sorting, and pagination.
+## Technical Implementation Notes
+- Uses `zod` schemas for payload validation.
+- Employs a transaction when updating subjects and prerequisites.
+- QueryBuilder enables advanced list filtering and pagination.
+- Marking normalization utilities keep subject data consistent across updates.
+
+## Refactor Summary
+- Consolidated subject validation logic into `subject.validation.ts`.
+- Decoupled form normalization from controller persistence.
+- Improved schema stability by validating references before updates.
+
+## Performance & Maintainability
+- Subject list queries use indexed fields and projection.
+- Validation and normalization helpers are reusable across creation and update workflows.
+- The module's separation between route, controller, service, and util improves extensibility.
