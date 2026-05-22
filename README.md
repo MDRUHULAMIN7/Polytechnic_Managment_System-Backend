@@ -415,5 +415,3 @@ If you are using seeded local or controlled demo data, the following sample acco
 - Student
   ID: `2026070001`
   Password: `ruhul1234`
-
-Use demo credentials only for local or controlled environments.
