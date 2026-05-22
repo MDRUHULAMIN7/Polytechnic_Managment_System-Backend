@@ -299,10 +299,10 @@ If you are using seeded local or controlled demo data, the following sample acco
   ID: `A-0001`
   Password: `admin1234`
 - Instructor
-  ID: `I-0003`
-  Password: `Instructor@123`
+  ID: `I-0004`
+  Password: `ruhul1234`
 - Student
-  ID: `2027010001`
+  ID: `2026070001`
   Password: `ruhul1234`
 
 Use demo credentials only for local or controlled environments.
