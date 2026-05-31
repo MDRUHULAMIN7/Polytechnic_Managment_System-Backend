@@ -112,11 +112,14 @@ The following assets show the deployed backend and the data structure behind it:
 
 | Live API Root | Health Endpoint |
 | --- | --- |
-| <img src="./docs/screenshots/api-root.jpg" alt="PMS backend root endpoint preview" width="100%" /> | <img src="./docs/screenshots/health-endpoint.jpg" alt="PMS backend health endpoint preview" width="100%" /> |
+| <img src="./docs/screenshots/api-root.jpg" alt="PMS backend root endpoint preview" width="100%" /> | <img src="./docs/screenshots/health-endpoint.jpg" alt="PMS backend health endpoint preview" width="100%" /> <img width="1570" height="713" alt="image" src="https://github.com/user-attachments/assets/4804dbc3-5b9d-40ad-b2d7-75adee19218c" />
+|
 
 | Latest Notices API Preview | Entity Relationship Diagram |
 | --- | --- |
-| <img src="./docs/screenshots/latest-notices-endpoint.jpg" alt="PMS backend latest notices endpoint preview" width="100%" /> | <img src="./docs/screenshots/Polytechnic Management System ER Diagram.png" alt="PMS backend entity relationship diagram" width="100%" /> |
+| <img src="./docs/screenshots/latest-notices-endpoint.jpg" alt="PMS backend latest notices endpoint preview" width="100%" /> | <img width="1570" height="713" alt="image" src="https://github.com/user-attachments/assets/d7e72dcb-0c56-4964-9e25-e8658bfaa162" />
+
+ |
 
 ## Features by User Type
 
